@@ -1,0 +1,25 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.ipynb_checkpoints/Nfl-checkpoint.ipynb
+/NFL/.ipynb_checkpoints/Nfl Exploratory-checkpoint.ipynb
+/NFL/nfl_model.pickle
+/NFL/nfl_full_model.pickle
+/College Football/cfb_model.pickle
+/College Football/cfb_full_model.pickle
+.ipynb_checkpoints
+Model.sln
+Model.pyproj.user
+Model.pyproj
+/College Football/CFB Exploratory.ipynb
+/College Football/.ipynb_checkpoints
+/College Football/CFB Test Notebook.ipynb
+/NFL/Nfl Exploratory.ipynb
+/NFL/.ipynb_checkpoints
+/NFL/NFL Test Notebook.ipynb
+__pycache__
+/NFL/__pycache__
+/College Football/__pycache__
+/College Football/predictions.csv
+/NFL/predictions.csv
