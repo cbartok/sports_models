@@ -84,9 +84,8 @@ class NflDataLayer():
         ##This is done so we can standardize the stats
         data.dropna(inplace=True)
 
-        ##Standardize all stats columns
-        data.iloc[:,10:] = data.iloc[:,10:].apply(pd.to_numeric)
-        data.iloc[:,10:] = data.iloc[:,10:].apply(stats.zscore)
+        ##Standardize the numeric data and update in terms of strengths of both teams
+        data = self.create_opponent_adjusted_stats(data, 18)
 
         ##Pull odds for the games
         ##Use reverse odds to ensure that neutral site games are included
@@ -100,7 +99,7 @@ class NflDataLayer():
         data = data.merge(odds, how='left')
 
         ##Drop all columns that aren't needed
-        full_data.drop(columns=['away_abbr', 'home_abbr'], inplace=True)
+        data.drop(columns=['away_abbr', 'home_abbr'], inplace=True)
 
         return data
 
@@ -145,6 +144,49 @@ class NflDataLayer():
         full_data.to_csv('historical_nfl_data.csv', index=False)
 
         return full_data
+
+    def create_opponent_adjusted_stats(self, data, index_start):
+        '''
+        Update the dataframe to reflect differences in team level for each stat
+        First, standardize all columns after a certain index
+        By standardize, we normalize each cell by subtracting the min value of the column and dividing by the range
+        This transforms the data to be between 0 and 1
+        Then, calculate the difference between the two teams with the opposing stats.
+
+        All of these comparitive stats will be in terms of the home team
+        '''
+        
+        ##First ensure that all columns are numeric
+        data.iloc[:,index_start:] = data.iloc[:,index_start:].apply(pd.to_numeric)
+
+        ##Normalize the data
+        data.iloc[:,index_start:] = (data.iloc[:,index_start:] - data.iloc[:,index_start:].min())/(data.iloc[:,index_start:].max() - data.iloc[:,index_start:].min())
+
+        ##Create a new dataframe to hold the opponent-adjusted stats
+        updated_data = data.iloc[:,0:index_start].copy()
+
+        ##Create a column for the opponent adjusted stats from the original dataframe
+        ##There might be a way to automate this in the future but do it manually for now
+        ##If lower is an indicator of better perfomance, we subtract it from 1
+        ##i.e. defensive stats
+        updated_data['dvoa'] = data['home_dvoa'] - data['away_dvoa']
+        updated_data['home_off_dvoa'] = data['home_off_dvoa'] - (1- data['away_def_dvoa'])
+        updated_data['away_off_dvoa'] = data['away_off_dvoa'] - (1- data['home_def_dvoa'])
+        updated_data['sp_dvoa'] = data['home_sp_dvoa'] - data['away_sp_dvoa']
+        updated_data['team_rankings_rating'] = data['home_team_rankings_rating'] - data['away_team_rankings_rating']
+        updated_data['strength_of_schedule'] = data['home_strength_of_schedule'] - data['away_strength_of_schedule']
+
+        ##Lower defensive stats indicates a better performance
+        updated_data['away_points_per_play'] = data['away_points_per_play'] - (1 - data['home_opponent_points_per_play'])
+        updated_data['away_yards_per_play'] = data['away_yards_per_play'] - (1 - data['home_opponent_yards_per_play'])
+        updated_data['away_yards_per_rush'] = data['away_yards_per_rush'] - (1 - data['home_opponent_yards_per_rush'])
+        updated_data['away_yards_per_pass'] = data['away_yards_per_pass'] - (1 - data['home_opponent_yards_per_pass'])
+        updated_data['home_points_per_play'] = data['home_points_per_play'] - (1 - data['away_opponent_points_per_play'])
+        updated_data['home_yards_per_play'] = data['home_yards_per_play'] - (1 - data['away_opponent_yards_per_play'])
+        updated_data['home_yards_per_rush'] = data['home_yards_per_rush'] - (1 - data['away_opponent_yards_per_rush'])
+        updated_data['home_yards_per_pass'] = data['home_yards_per_pass'] - (1 - data['away_opponent_yards_per_pass'])
+        
+        return updated_data
 
     def pull_schedule(self, week, year):
         '''
@@ -292,9 +334,8 @@ class NflDataLayer():
         ##This is done so we can standardize the stats
         historical_data.dropna(inplace=True)
 
-        ##Standardize all stats columns
-        historical_data.iloc[:,13:] = historical_data.iloc[:,13:].apply(pd.to_numeric)
-        historical_data.iloc[:,13:] = historical_data.iloc[:,13:].apply(stats.zscore)
+        ##Standardize the numeric data and update in terms of strengths of both teams
+        historical_data = self.create_opponent_adjusted_stats(historical_data, 21)
 
         ##Get a result column
         ##Home Score - Away Score (negative means away win)
@@ -354,9 +395,10 @@ class NflDataLayer():
         historical_fo_stats.columns = ['abbr', 'dvoa', 'off_dvoa', 'def_dvoa', 'sp_dvoa',]
         historical_fo_stats = historical_fo_stats[historical_fo_stats['dvoa'] != 'LASTYEAR']
 
-        ##DVOA is formatted as a percentage so we need to convert it to a float
+        ##DVOA is formatted as a percentage so we need to convert it to a float and add 1 to get the percent better than the median team
         historical_fo_stats.iloc[:, 1:] = historical_fo_stats.iloc[:, 1:].apply(lambda x: x.str.rstrip('%').astype('float') / 100.0)
         historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:].apply(pd.to_numeric, errors='coerce')
+        historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:] + 1
 
         ##Make abbreviations lowercase to match the format from sportsreference
         historical_fo_stats['abbr'] = historical_fo_stats['abbr'].str.lower()

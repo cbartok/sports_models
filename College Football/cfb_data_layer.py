@@ -124,9 +124,8 @@ class CfbDataLayer():
         ##This is done so we can standardize the stats
         data.dropna(inplace=True)
 
-        ##Standardize all stats columns
-        data.iloc[:,10:] = data.iloc[:,10:].apply(pd.to_numeric)
-        data.iloc[:,10:] = data.iloc[:,10:].apply(stats.zscore)
+        ##Standardize the numeric data and update in terms of strengths of both teams
+        data = self.create_opponent_adjusted_stats(data, 10)
 
         ##Pull odds for the games
         ##Use reverse odds to ensure that neutral site games are included
@@ -241,9 +240,8 @@ class CfbDataLayer():
         ##This is done so we can standardize the stats
         historical_data.dropna(inplace=True)
 
-        ##Standardize all stats columns
-        historical_data.iloc[:,13:] = historical_data.iloc[:,13:].apply(pd.to_numeric)
-        historical_data.iloc[:,13:] = historical_data.iloc[:,13:].apply(stats.zscore)
+        ##Standardize the numeric data and update in terms of strengths of both teams
+        historical_data = self.create_opponent_adjusted_stats(historical_data, 13)
 
         ##Get a result column
         ##Home Score - Away Score (negative means away win)
@@ -253,6 +251,51 @@ class CfbDataLayer():
         historical_data.dropna(subset=['result'], inplace=True)
 
         return historical_data
+
+    def create_opponent_adjusted_stats(self, data, index_start):
+        '''
+        Update the dataframe to reflect differences in team level for each stat
+        First, standardize all columns after a certain index
+        By standardize, we normalize each cell by subtracting the min value of the column and dividing by the range
+        This transforms the data to be between 0 and 1
+        Then, calculate the difference between the two teams with the opposing stats.
+
+        All of these comparitive stats will be in terms of the home team
+        '''
+        
+        ##First ensure that all columns are numeric
+        data.iloc[:,index_start:] = data.iloc[:,index_start:].apply(pd.to_numeric)
+
+        ##Normalize the data
+        data.iloc[:,index_start:] = (data.iloc[:,index_start:] - data.iloc[:,index_start:].min())/(data.iloc[:,index_start:].max() - data.iloc[:,index_start:].min())
+
+        ##Create a new dataframe to hold the opponent-adjusted stats
+        updated_data = data.iloc[:,0:index_start].copy()
+
+        ##Create a column for the opponent adjusted stats from the original dataframe
+        ##There might be a way to automate this in the future but do it manually for now
+        ##If lower is an indicator of better perfomance, we subtract it from 1
+        ##i.e. defensive stats
+        updated_data['f+/-'] = data['home_f+/-'] - data['away_f+/-']
+        updated_data['s&p+'] = data['home_s&p+'] - data['away_s&p+'] 
+        updated_data['fei'] = data['home_fei'] - data['away_fei'] 
+
+        ##Lower rank indicates a better team
+        updated_data['average_ranking'] = (1 - data['home_average_ranking']) - (1 - data['away_average_ranking'])
+        updated_data['team_rankings_rating'] = data['home_team_rankings_rating'] - data['away_team_rankings_rating']
+        updated_data['strength_of_schedule'] = data['home_strength_of_schedule'] - data['away_strength_of_schedule']
+
+        ##Lower defensive stats indicates a better performance
+        updated_data['away_points_per_play'] = data['away_points_per_play'] - (1 - data['home_opponent_points_per_play'])
+        updated_data['away_yards_per_play'] = data['away_yards_per_play'] - (1 - data['home_opponent_yards_per_play'])
+        updated_data['away_yards_per_rush'] = data['away_yards_per_rush'] - (1 - data['home_opponent_yards_per_rush'])
+        updated_data['away_yards_per_pass'] = data['away_yards_per_pass'] - (1 - data['home_opponent_yards_per_pass'])
+        updated_data['home_points_per_play'] = data['home_points_per_play'] - (1 - data['away_opponent_points_per_play'])
+        updated_data['home_yards_per_play'] = data['home_yards_per_play'] - (1 - data['away_opponent_yards_per_play'])
+        updated_data['home_yards_per_rush'] = data['home_yards_per_rush'] - (1 - data['away_opponent_yards_per_rush'])
+        updated_data['home_yards_per_pass'] = data['home_yards_per_pass'] - (1 - data['away_opponent_yards_per_pass'])
+        
+        return updated_data
 
     def pull_schedule(self, start_day, end_day):
         '''
@@ -943,4 +986,3 @@ class CfbDataLayer():
 
         daily_odds = pd.DataFrame(daily_odds)
         return daily_odds
-
