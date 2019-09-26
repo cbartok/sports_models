@@ -44,18 +44,13 @@ model_data = data.copy()
 model_data['neutral'] = np.where(model_data['neutral'] == 1, 1, 0)
 model_data = model_data.drop(['spread', 'date', 'home_name', 'away_name'], axis=1)
 if not full_model:
-    model_data = pd.concat([model_data.iloc[:,0:14], model_data[:, 23]], axis=1)
+    pass
 game_features = np.array(model_data)
 
 ##Use the model to make predictions for this week's games
-predictions = pd.Series(cfb_model.predict(game_features))
+predictions = pd.Series(nfl_model.predict(game_features))
 
 ##Return the results of the prediction
 results = pd.concat([data[['away_name', 'home_name', 'spread']], predictions], axis=1)
 results.columns = ['away_name', 'home_name', 'spread', 'prediction']
 results.to_csv('predictions.csv', index=False)
-##Use the model to make predictions for this week's games
-predictions = cfb_model.predict(game_features)
-
-##Return the results of the prediction
-results = pd.concat([data[['away_name', 'home_name']], predictions], axis=1)
