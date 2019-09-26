@@ -85,7 +85,7 @@ class NflDataLayer():
         data.dropna(inplace=True)
 
         ##Standardize the numeric data and update in terms of strengths of both teams
-        data = self.create_opponent_adjusted_stats(data, 18)
+        data = self.create_opponent_adjusted_stats(data, 10)
 
         ##Pull odds for the games
         ##Use reverse odds to ensure that neutral site games are included
@@ -335,7 +335,7 @@ class NflDataLayer():
         historical_data.dropna(inplace=True)
 
         ##Standardize the numeric data and update in terms of strengths of both teams
-        historical_data = self.create_opponent_adjusted_stats(historical_data, 21)
+        historical_data = self.create_opponent_adjusted_stats(historical_data, 13)
 
         ##Get a result column
         ##Home Score - Away Score (negative means away win)
