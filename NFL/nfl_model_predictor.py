@@ -6,7 +6,7 @@ import nfl_data_layer as ndl
 
 os.chdir('NFL')
 todays_date = pd.to_datetime('today')
-week = 4
+week = 9
 
 ##Import the existing model
 ##Use the simple model if we are in September

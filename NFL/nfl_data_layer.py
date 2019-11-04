@@ -393,7 +393,7 @@ class NflDataLayer():
             historical_fo_stats = historical_fo_stats[historical_fo_stats['off_dvoa'] != 'OFF.RANK']
 
         historical_fo_stats.columns = ['abbr', 'dvoa', 'off_dvoa', 'def_dvoa', 'sp_dvoa',]
-        historical_fo_stats = historical_fo_stats[historical_fo_stats['dvoa'] != 'LASTYEAR']
+        historical_fo_stats = historical_fo_stats[~historical_fo_stats['dvoa'].isin(['LASTYEAR', 'LAST\n\t\t\tYEAR'])]
 
         ##DVOA is formatted as a percentage so we need to convert it to a float and add 1 to get the percent better than the median team
         historical_fo_stats.iloc[:, 1:] = historical_fo_stats.iloc[:, 1:].apply(lambda x: x.str.rstrip('%').astype('float') / 100.0)
