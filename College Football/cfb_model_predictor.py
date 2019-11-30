@@ -43,7 +43,8 @@ predictions = pd.Series(cfb_model.predict(game_features))
 ##Return the results of the prediction
 results = pd.concat([data[['away_name', 'home_name', 'spread']], predictions], axis=1)
 results.columns = ['away_name', 'home_name', 'spread', 'prediction']
-results.to_csv('predictions.csv', index=False)
+results['difference'] = results['prediction'] - results['spread']
+results.to_csv('cfb_predictions.csv', index=False)
 
 
 

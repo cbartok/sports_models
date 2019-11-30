@@ -6,7 +6,7 @@ import nfl_data_layer as ndl
 
 os.chdir('NFL')
 todays_date = pd.to_datetime('today')
-week = 9
+week = 13
 
 ##Import the existing model
 ##Use the simple model if we are in September
@@ -53,4 +53,5 @@ predictions = pd.Series(nfl_model.predict(game_features))
 ##Return the results of the prediction
 results = pd.concat([data[['away_name', 'home_name', 'spread']], predictions], axis=1)
 results.columns = ['away_name', 'home_name', 'spread', 'prediction']
-results.to_csv('predictions.csv', index=False)
+results['difference'] = results['prediction'] - results['spread']
+results.to_csv('nfl_predictions.csv', index=False)

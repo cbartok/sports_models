@@ -160,31 +160,30 @@ class NflDataLayer():
         data.iloc[:,index_start:] = data.iloc[:,index_start:].apply(pd.to_numeric)
 
         ##Normalize the data
-        data.iloc[:,index_start:] = (data.iloc[:,index_start:] - data.iloc[:,index_start:].min())/(data.iloc[:,index_start:].max() - data.iloc[:,index_start:].min())
+        data.iloc[:,index_start:] = (data.iloc[:,index_start:] - np.mean(data.iloc[:,index_start:], axis=0))/(np.std(data.iloc[:,index_start:], axis=0))
 
         ##Create a new dataframe to hold the opponent-adjusted stats
         updated_data = data.iloc[:,0:index_start].copy()
 
         ##Create a column for the opponent adjusted stats from the original dataframe
-        ##There might be a way to automate this in the future but do it manually for now
-        ##If lower is an indicator of better perfomance, we subtract it from 1
-        ##i.e. defensive stats
+        ##There might be a way to automate this in the future but do it manually for now 
+        ##Note we have to vary the signs to ensure that we calculate everything correctly       
         updated_data['dvoa'] = data['home_dvoa'] - data['away_dvoa']
-        updated_data['home_off_dvoa'] = data['home_off_dvoa'] - (1- data['away_def_dvoa'])
-        updated_data['away_off_dvoa'] = data['away_off_dvoa'] - (1- data['home_def_dvoa'])
+        updated_data['home_off_dvoa'] = data['home_off_dvoa'] + data['away_def_dvoa']
+        updated_data['away_off_dvoa'] = data['away_off_dvoa'] - data['home_def_dvoa']
         updated_data['sp_dvoa'] = data['home_sp_dvoa'] - data['away_sp_dvoa']
         updated_data['team_rankings_rating'] = data['home_team_rankings_rating'] - data['away_team_rankings_rating']
         updated_data['strength_of_schedule'] = data['home_strength_of_schedule'] - data['away_strength_of_schedule']
 
         ##Lower defensive stats indicates a better performance
-        updated_data['away_points_per_play'] = data['away_points_per_play'] - (1 - data['home_opponent_points_per_play'])
-        updated_data['away_yards_per_play'] = data['away_yards_per_play'] - (1 - data['home_opponent_yards_per_play'])
-        updated_data['away_yards_per_rush'] = data['away_yards_per_rush'] - (1 - data['home_opponent_yards_per_rush'])
-        updated_data['away_yards_per_pass'] = data['away_yards_per_pass'] - (1 - data['home_opponent_yards_per_pass'])
-        updated_data['home_points_per_play'] = data['home_points_per_play'] - (1 - data['away_opponent_points_per_play'])
-        updated_data['home_yards_per_play'] = data['home_yards_per_play'] - (1 - data['away_opponent_yards_per_play'])
-        updated_data['home_yards_per_rush'] = data['home_yards_per_rush'] - (1 - data['away_opponent_yards_per_rush'])
-        updated_data['home_yards_per_pass'] = data['home_yards_per_pass'] - (1 - data['away_opponent_yards_per_pass'])
+        updated_data['away_points_per_play'] = -data['away_points_per_play'] - data['home_opponent_points_per_play']
+        updated_data['away_yards_per_play'] = -data['away_yards_per_play'] - data['home_opponent_yards_per_play']
+        updated_data['away_yards_per_rush'] = -data['away_yards_per_rush'] - data['home_opponent_yards_per_rush']
+        updated_data['away_yards_per_pass'] = -data['away_yards_per_pass'] - data['home_opponent_yards_per_pass']
+        updated_data['home_points_per_play'] = data['home_points_per_play'] + data['away_opponent_points_per_play']
+        updated_data['home_yards_per_play'] = data['home_yards_per_play'] + data['away_opponent_yards_per_play']
+        updated_data['home_yards_per_rush'] = data['home_yards_per_rush'] + data['away_opponent_yards_per_rush']
+        updated_data['home_yards_per_pass'] = data['home_yards_per_pass'] + data['away_opponent_yards_per_pass']
         
         return updated_data
 
