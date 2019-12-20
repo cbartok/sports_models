@@ -25,3 +25,7 @@ __pycache__
 /NFL/predictions.csv
 /College Football/cfb_predictions.csv
 /NFL/nfl_predictions.csv
+/College Basketball/CBB Historical Odds
+/College Basketball/cbb_full_model.pickle
+/College Basketball/cbb_model.pickle
+/College Basketball/cbb_predictions.csv
