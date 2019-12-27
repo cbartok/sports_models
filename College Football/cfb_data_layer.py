@@ -266,9 +266,6 @@ class CfbDataLayer():
         ##First ensure that all columns are numeric
         data.iloc[:,index_start:] = data.iloc[:,index_start:].apply(pd.to_numeric)
 
-        ##Normalize the data
-        data.iloc[:,index_start:] = (data.iloc[:,index_start:] - np.mean(data.iloc[:,index_start:], axis=0))/(np.std(data.iloc[:,index_start:], axis=0))
-
         ##Create a new dataframe to hold the opponent-adjusted stats
         updated_data = data.iloc[:,0:index_start].copy()
 
@@ -472,6 +469,7 @@ class CfbDataLayer():
         ##Also convert all of the string numbers to numerics
         historical_fo_stats['f+/-'] = historical_fo_stats['f+/-'].str.rstrip('%').astype('float') / 100.0
         historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:].apply(pd.to_numeric, errors='coerce')
+        historical_fo_stats.iloc[:,1:] = (historical_fo_stats.iloc[:,1:] - np.mean(historical_fo_stats.iloc[:,1:], axis=0))/(np.std(historical_fo_stats.iloc[:,1:], axis=0))
 
         ##Replace the correct team names to ensure we can merge with the schedule data
         historical_fo_stats['name'].replace(self.team_replace, inplace=True)
@@ -529,6 +527,10 @@ class CfbDataLayer():
         historical_massey['name'] = historical_massey['name'].apply(lambda x: x.replace(' St', ' State') if ' State' not in x else x)
         historical_massey['name'].replace(self.team_replace, inplace=True)
 
+        ##Normalize the data
+        historical_massey.iloc[:,1:] = historical_massey.iloc[:,1:].apply(pd.to_numeric) 
+        historical_massey.iloc[:,1:] = (historical_massey.iloc[:,1:] - np.mean(historical_massey.iloc[:,1:], axis=0))/(np.std(historical_massey.iloc[:,1:], axis=0))
+
         return historical_massey
 
     def pull_team_rankings_data(self, year=None):
@@ -570,6 +572,10 @@ class CfbDataLayer():
         ##Update the team names to match the base
         team_rankings_data['name'] = team_rankings_data['name'].apply(lambda x: x.replace(' St', ' State') if ' State' not in x else x)
         team_rankings_data['name'].replace(self.team_replace, inplace=True)
+
+        ##Normalize the data
+        team_rankings_data.iloc[:,1:] = team_rankings_data.iloc[:,1:].apply(pd.to_numeric) 
+        team_rankings_data.iloc[:,1:] = (team_rankings_data.iloc[:,1:] - np.mean(team_rankings_data.iloc[:,1:], axis=0))/(np.std(team_rankings_data.iloc[:,1:], axis=0))
 
         return team_rankings_data
 

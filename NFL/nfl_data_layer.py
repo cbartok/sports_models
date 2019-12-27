@@ -398,7 +398,7 @@ class NflDataLayer():
         ##DVOA is formatted as a percentage so we need to convert it to a float and add 1 to get the percent better than the median team
         historical_fo_stats.iloc[:, 1:] = historical_fo_stats.iloc[:, 1:].apply(lambda x: x.str.rstrip('%').astype('float') / 100.0)
         historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:].apply(pd.to_numeric, errors='coerce')
-        historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:] + 1
+        historical_fo_stats.iloc[:,1:] = (historical_fo_stats.iloc[:,1:] - np.mean(historical_fo_stats.iloc[:,1:], axis=0))/(np.std(historical_fo_stats.iloc[:,1:], axis=0))
 
         ##Make abbreviations lowercase to match the format from sportsreference
         historical_fo_stats['abbr'] = historical_fo_stats['abbr'].str.lower()
@@ -446,6 +446,10 @@ class NflDataLayer():
 
         ##Update the team names to match the base
         team_rankings_data['name'].replace(self.team_replace, inplace=True)
+
+        ##Normalize the data
+        team_rankings_data.iloc[:,1:] = team_rankings_data.iloc[:,1:].apply(pd.to_numeric) 
+        team_rankings_data.iloc[:,1:] = (team_rankings_data.iloc[:,1:] - np.mean(team_rankings_data.iloc[:,1:], axis=0))/(np.std(team_rankings_data.iloc[:,1:], axis=0))
 
         return team_rankings_data
 
