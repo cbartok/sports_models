@@ -21,7 +21,8 @@ class NflDataLayer():
                         'Buffalo Bills': 'Buffalo', 'New York': 'New York Giants', 'Houston Texans':'Houston', 'ne':'nwe', 'no':'nor',\
                         'ind':'clt', 'bal':'rav', 'lac':'sdg', 'ari':'crd', 'gb':'gnb',\
                         'oak':'rai', 'ten':'oti', 'tb':'tam', 'sf':'sfo', 'lar':'ram', 'hou':'htx', 'kc':'kan', 'stl':'ram', 'sd':'sdg',
-                        'jac':'jax', 'larm':'ram', 'lach':'sdg', 'LA Chargers':'Los Angeles Chargers', 'LA Rams':'Los Angeles Rams'}
+                        'jac':'jax', 'larm':'ram', 'lach':'sdg', 'LA Chargers':'Los Angeles Chargers', 'LA Rams':'Los Angeles Rams',\
+                        'L.A. Chargers':'Los Angeles Chargers', 'L.A. Rams':'Los Angeles Rams'}
 
     def pull_teams_information(self):
         '''
@@ -802,13 +803,18 @@ class NflDataLayer():
         if start_date < pd.to_datetime('today'):
             start_date = pd.to_datetime('today')
 
-        date_range = pd.date_range(start_date, end_date)
+        date_range = pd.date_range(start_date, end_date+pd.DateOffset(1))
         full_odds = []
         for day in date_range:
             daily_odds = self.pull_current_daily_odds(day)
             full_odds.append(daily_odds)
 
         full_odds = pd.concat(full_odds)
+
+        ##Update team names
+        full_odds['home_name'].replace(self.team_replace, inplace=True)
+        full_odds['away_name'].replace(self.team_replace, inplace=True)
+
         return full_odds
 
     def pull_current_daily_odds(self, games_date):

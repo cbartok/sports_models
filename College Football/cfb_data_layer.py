@@ -927,7 +927,7 @@ class CfbDataLayer():
         if start_date < pd.to_datetime('today'):
             start_date = pd.to_datetime('today')
 
-        date_range = pd.date_range(start_date, end_date)
+        date_range = pd.date_range(start_date, end_date+pd.DateOffset(1))
         full_odds = []
         for day in date_range:
             daily_odds = self.pull_current_daily_odds(day)
