@@ -33,8 +33,6 @@ data = cfb_data.create_dataframe(week_start_date, week_end_date)
 model_data = data.copy()
 model_data['neutral'] = np.where(model_data['neutral'] == 1, 1, 0)
 model_data = model_data.drop(['spread', 'date', 'home_name', 'away_name'], axis=1)
-if not full_model:
-    model_data = pd.concat([model_data.iloc[:,0:14], model_data[:, 23]], axis=1)
 game_features = np.array(model_data)
 
 ##Use the model to make predictions for this week's games

@@ -75,7 +75,7 @@ class CbbDataLayer():
                             'Alab A&M':'Alabama A&M', 'Miss Val State':'Mississippi Valley State', 'CSFullerton':'Cal State Fullerton', 'Miami Florida':'Miami (FL)',\
                             'USCUpstate':'USC Upstate', 'Tennessee-Martin':'UT-Martin', 'Central Connecticut State':'Central Connecticut', 'Illinois-Chicago':'UIC',\
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
-                            'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's"}
+                            'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne'}
         self.massey_rating_historical_dates = {2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
@@ -416,8 +416,8 @@ class CbbDataLayer():
         updated_data['home_ken_pom'] = data['home_ken_pom_offense'] + data['away_ken_pom_defense']
         updated_data['away_ken_pom'] = -data['away_ken_pom_offense'] - data['home_ken_pom_defense']
 
-        updated_data['home_effective_fg'] = data['home_effective_fg'] + data['away_opp_effective_fg']
-        updated_data['away_effective_fg'] = -data['away_effective_fg'] - data['home_opp_effective_fg']
+        updated_data['home_efficiency'] = data['home_offensive_efficiency'] + data['away_defensive_efficiency']
+        updated_data['away_efficiency'] = -data['away_offensive_efficiency'] - data['home_defensive_efficiency']
         updated_data['home_rebounding'] = data['home_def_rebounding_percentage'] - data['away_off_rebounding_percentage']
         updated_data['away_rebounding'] = -data['away_def_rebounding_percentage'] + data['home_off_rebounding_percentage']
         updated_data['home_turnover_rate'] = -data['home_to_percentage'] - data['away_opp_to_percentage']
@@ -477,6 +477,7 @@ class CbbDataLayer():
         ##Update team names to match the schedule names
         historical_massey['name'] = historical_massey['name'].apply(lambda x: x.replace(' St', ' State') if ' State' not in x else x)
         historical_massey['name'].replace(self.team_replace, inplace=True)
+        historical_massey = historical_massey[historical_massey['name'] != 'Correlation']
 
         ##Normalize the data
         historical_massey.iloc[:,1:] = historical_massey.iloc[:,1:].apply(pd.to_numeric) 
@@ -537,11 +538,11 @@ class CbbDataLayer():
         strength_of_schedule = self.pull_strength_of_schedule(year)
         team_rankings_data = team_rankings_data.merge(strength_of_schedule, how='left')
 
-        ##Pull effective field goal percentage for and against
-        effective_fg = self.pull_effective_fg(year)
-        team_rankings_data = team_rankings_data.merge(effective_fg, how='left')
-        opp_effective_fg = self.pull_opp_effective_fg(year)
-        team_rankings_data = team_rankings_data.merge(opp_effective_fg, how='left')
+        ##Pull efficiency for and against
+        off_eff = self.pull_offensive_efficiency(year)
+        team_rankings_data = team_rankings_data.merge(off_eff, how='left')
+        def_eff = self.pull_defensive_efficiency(year)
+        team_rankings_data = team_rankings_data.merge(def_eff, how='left')
 
         ##Pull turnover rate for and against
         to_rate = self.pull_turnovers_per_possession(year)
@@ -633,14 +634,14 @@ class CbbDataLayer():
 
         return strengh_of_schedule
 
-    def pull_effective_fg(self, year=None):
+    def pull_offensive_efficiency(self, year=None):
         '''
-        Pull effective field goal percentage for the specified year
+        Pull offensive efficiency percentage for the specified year
         '''
         if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/effective-field-goal-pct?date=' + str(year)+ '-05-01'
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/offensive-efficiency?date=' + str(year)+ '-05-01'
         else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/effective-field-goal-pct'
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/offensive-efficiency'
         url = requests.get(url).text
         soup = BeautifulSoup(url, 'lxml')
 
@@ -655,23 +656,23 @@ class CbbDataLayer():
             if row:
                 res.append(row)
 
-        effective_fg = pd.DataFrame(res)
-        effective_fg = effective_fg[[1,2]]
-        effective_fg.columns = ['name', 'effective_fg']
+        efficiency = pd.DataFrame(res)
+        efficiency = efficiency[[1,2]]
+        efficiency.columns = ['name', 'offensive_efficiency']
         
         ##Convert string to float
-        effective_fg['effective_fg'] = effective_fg['effective_fg'].str.rstrip('%').astype('float') / 100.0
+        efficiency['offensive_efficiency'] = efficiency['offensive_efficiency'].str.rstrip('%').astype('float') / 100.0
 
-        return effective_fg
+        return efficiency
 
-    def pull_opp_effective_fg(self, year=None):
+    def pull_defensive_efficiency(self, year=None):
         '''
-        Pull opponent effective field goal percentage for the specified year
+        Pull defensive efficiency for the specified year
         '''
         if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-effective-field-goal-pct?date=' + str(year)+ '-05-01'
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/defensive-efficiency?date=' + str(year)+ '-05-01'
         else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-effective-field-goal-pct'
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/defensive-efficiency'
         url = requests.get(url).text
         soup = BeautifulSoup(url, 'lxml')
 
@@ -686,14 +687,14 @@ class CbbDataLayer():
             if row:
                 res.append(row)
 
-        effective_fg = pd.DataFrame(res)
-        effective_fg = effective_fg[[1,2]]
-        effective_fg.columns = ['name', 'opp_effective_fg']
+        efficiency = pd.DataFrame(res)
+        efficiency = efficiency[[1,2]]
+        efficiency.columns = ['name', 'defensive_efficiency']
         
         ##Convert string to float
-        effective_fg['opp_effective_fg'] = effective_fg['opp_effective_fg'].str.rstrip('%').astype('float') / 100.0
+        efficiency['defensive_efficiency'] = efficiency['defensive_efficiency'].str.rstrip('%').astype('float') / 100.0
 
-        return effective_fg
+        return efficiency
 
     def pull_turnovers_per_possession(self, year=None):
         '''
@@ -1011,4 +1012,5 @@ class CbbDataLayer():
 
         daily_odds = pd.DataFrame(daily_odds)
         return daily_odds
+
 

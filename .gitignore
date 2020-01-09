@@ -29,3 +29,6 @@ __pycache__
 /College Basketball/cbb_full_model.pickle
 /College Basketball/cbb_model.pickle
 /College Basketball/cbb_predictions.csv
+/College Basketball/CBB Exploratory.ipynb
+/College Basketball/.ipynb_checkpoints
+/College Basketball/CBB Test .ipynb
