@@ -29,4 +29,3 @@ results = pd.concat([data[['away_name', 'home_name', 'date', 'spread']], predict
 results.columns = ['away_name', 'home_name', 'date', 'spread', 'prediction']
 results['difference'] = results['prediction'] - results['spread']
 results.to_csv('cbb_predictions.csv', index=False)
-

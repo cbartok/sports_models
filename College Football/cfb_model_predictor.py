@@ -4,7 +4,6 @@ import os
 import cfb_model_builder as cmb
 import cfb_data_layer as cdl
 
-os.chdir('College Football')
 todays_date = pd.to_datetime('today')
 
 ##Import the existing model

@@ -424,9 +424,11 @@ class CfbDataLayer():
         ##Find the table on the page
         ##The most recent table has a different class than past tables
         ##If the first find does not work, we try the second
-        f_table = soup.find('table', attrs={'class':'sticky-headers sortable stats'})
-        if f_table is None:
-            f_table = soup.find('table', attrs={'class':'stats'})
+        classes = ['stats', 'sticky-headers sortable stats', 'sticky-headers sortable stats-wide sticky-enabled']
+        for c in classes:
+            f_table = soup.find('table', attrs={'class':c})
+            if f_table is not None:
+                break
 
         ##Parse through the rows of the table to create the dataframe
         f_table_rows = f_table.find_all('tr')

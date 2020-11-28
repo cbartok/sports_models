@@ -14,6 +14,11 @@ import re
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
+import smtplib
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import COMMASPACE
 
 
 class CbbDataLayer():
@@ -75,7 +80,7 @@ class CbbDataLayer():
                             'Alab A&M':'Alabama A&M', 'Miss Val State':'Mississippi Valley State', 'CSFullerton':'Cal State Fullerton', 'Miami Florida':'Miami (FL)',\
                             'USCUpstate':'USC Upstate', 'Tennessee-Martin':'UT-Martin', 'Central Connecticut State':'Central Connecticut', 'Illinois-Chicago':'UIC',\
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
-                            'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne'}
+                            'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston'}
         self.massey_rating_historical_dates = {2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
@@ -1012,5 +1017,3 @@ class CbbDataLayer():
 
         daily_odds = pd.DataFrame(daily_odds)
         return daily_odds
-
-
