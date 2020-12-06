@@ -80,7 +80,8 @@ class CbbDataLayer():
                             'Alab A&M':'Alabama A&M', 'Miss Val State':'Mississippi Valley State', 'CSFullerton':'Cal State Fullerton', 'Miami Florida':'Miami (FL)',\
                             'USCUpstate':'USC Upstate', 'Tennessee-Martin':'UT-Martin', 'Central Connecticut State':'Central Connecticut', 'Illinois-Chicago':'UIC',\
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
-                            'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston'}
+                            'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
+                            'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha'}
         self.massey_rating_historical_dates = {2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
@@ -632,6 +633,7 @@ class CbbDataLayer():
 
         strengh_of_schedule = pd.DataFrame(res)
         strengh_of_schedule = strengh_of_schedule[[1,2]]
+        strengh_of_schedule = strengh_of_schedule[strengh_of_schedule[2] != '--']
         strengh_of_schedule.columns = ['name', 'strength_of_schedule']
         
         ##Get rid of the record in the team name
@@ -663,10 +665,11 @@ class CbbDataLayer():
 
         efficiency = pd.DataFrame(res)
         efficiency = efficiency[[1,2]]
+        efficiency = efficiency[efficiency[2] != '--']
         efficiency.columns = ['name', 'offensive_efficiency']
         
         ##Convert string to float
-        efficiency['offensive_efficiency'] = efficiency['offensive_efficiency'].str.rstrip('%').astype('float') / 100.0
+        efficiency['offensive_efficiency'] = efficiency['offensive_efficiency'].astype('float')
 
         return efficiency
 
@@ -694,10 +697,11 @@ class CbbDataLayer():
 
         efficiency = pd.DataFrame(res)
         efficiency = efficiency[[1,2]]
+        efficiency = efficiency[efficiency[2] != '--']
         efficiency.columns = ['name', 'defensive_efficiency']
         
         ##Convert string to float
-        efficiency['defensive_efficiency'] = efficiency['defensive_efficiency'].str.rstrip('%').astype('float') / 100.0
+        efficiency['defensive_efficiency'] = efficiency['defensive_efficiency'].astype('float')
 
         return efficiency
 
@@ -725,6 +729,7 @@ class CbbDataLayer():
 
         to_percentage = pd.DataFrame(res)
         to_percentage = to_percentage[[1,2]]
+        to_percentage = to_percentage[to_percentage[2] != '--']
         to_percentage.columns = ['name', 'to_percentage']
         
         ##Convert string to float
@@ -756,6 +761,7 @@ class CbbDataLayer():
 
         to_percentage = pd.DataFrame(res)
         to_percentage = to_percentage[[1,2]]
+        to_percentage = to_percentage[to_percentage[2] != '--']
         to_percentage.columns = ['name', 'opp_to_percentage']
         
         ##Convert string to float
@@ -787,6 +793,7 @@ class CbbDataLayer():
 
         rebounding = pd.DataFrame(res)
         rebounding = rebounding[[1,2]]
+        rebounding = rebounding[rebounding[2] != '--']
         rebounding.columns = ['name', 'def_rebounding_percentage']
         
         ##Convert string to float
@@ -818,6 +825,7 @@ class CbbDataLayer():
 
         rebounding = pd.DataFrame(res)
         rebounding = rebounding[[1,2]]
+        rebounding = rebounding[rebounding[2] != '--']
         rebounding.columns = ['name', 'off_rebounding_percentage']
         
         ##Convert string to float
@@ -849,6 +857,7 @@ class CbbDataLayer():
 
         ft_rate = pd.DataFrame(res)
         ft_rate = ft_rate[[1,2]]
+        ft_rate = ft_rate[ft_rate[2] != '--']
         ft_rate.columns = ['name', 'ft_rate']
         
         ##Convert string to float
@@ -880,6 +889,7 @@ class CbbDataLayer():
 
         ft_rate = pd.DataFrame(res)
         ft_rate = ft_rate[[1,2]]
+        ft_rate = ft_rate[ft_rate[2] != '--']
         ft_rate.columns = ['name', 'opp_ft_rate']
         
         ##Convert string to float
@@ -1008,12 +1018,17 @@ class CbbDataLayer():
             away_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[0].get_text().strip()
             home_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[1].get_text().strip()
             ##Pinnacle is Book ID 238
-            away_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[0].get_text().strip()
-            home_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[1].get_text().strip()
+            pinnacle_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[0].get_text().strip()
+            five_dimes_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'19'})[game_number].find_all('div')[0].get_text().strip()
             ##Get the spread number only so we only need the away team's odds
-            odds = away_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
+            odds = pinnacle_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
             odds = odds[:odds.find(' ')]
-            daily_odds.append({'away_name':away_team, 'home_name':home_team, 'spread':odds})
+            secondary_odds = five_dimes_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
+            secondary_odds = secondary_odds[:secondary_odds.find(' ')]
+            daily_odds.append({'away_name':away_team, 'home_name':home_team, 'spread':odds, 'spread2':secondary_odds})
 
         daily_odds = pd.DataFrame(daily_odds)
+        ##Fill in missing spread with secondary spread
+        daily_odds['spread'] = np.where(daily_odds['spread'] == '', daily_odds['spread2'], daily_odds['spread'])
+        daily_odds.drop('spread2', axis=1, inplace=True)
         return daily_odds

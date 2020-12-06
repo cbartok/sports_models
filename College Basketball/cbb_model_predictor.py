@@ -4,7 +4,6 @@ import os
 import cbb_model_builder as cmb
 import cbb_data_layer as cdl
 
-os.chdir('College Basketball')
 todays_date = pd.to_datetime('today') + pd.DateOffset(hours=3)
 
 cbb_model = cmb.import_cbb_model(file_name='cbb_model.pickle')
