@@ -81,8 +81,8 @@ class CbbDataLayer():
                             'USCUpstate':'USC Upstate', 'Tennessee-Martin':'UT-Martin', 'Central Connecticut State':'Central Connecticut', 'Illinois-Chicago':'UIC',\
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
                             'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
-                            'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha'}
-        self.massey_rating_historical_dates = {2019:'20190408', 2018:'20180402', 2017:'20170403',\
+                            'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley'}
+        self.massey_rating_historical_dates = {2020:'20200311', 2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
 
@@ -356,7 +356,7 @@ class CbbDataLayer():
 
         return historical_data
 
-    def create_historical_dataframe(self, first_year=2015, last_year=2019):
+    def create_historical_dataframe(self, first_year=2015, last_year=2020):
         '''
         Compiles a complete dataframe of stats to use to train models
         Uses specified years given        
@@ -471,7 +471,7 @@ class CbbDataLayer():
         for tr in table_rows:
             td = tr.find_all('td')
             row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
+            if row and len(row) > 1:
                 row = [row[i] for i in [0, -2]]
                 res.append(row)        
         
@@ -573,6 +573,7 @@ class CbbDataLayer():
         team_rankings_data['name'].replace(self.team_replace, inplace=True)
 
         ##Normalize the data
+        team_rankings_data = team_rankings_data[pd.notnull(team_rankings_data.iloc[:,-1])]
         team_rankings_data.iloc[:,1:] = team_rankings_data.iloc[:,1:].apply(pd.to_numeric) 
         team_rankings_data.iloc[:,1:] = (team_rankings_data.iloc[:,1:] - np.mean(team_rankings_data.iloc[:,1:], axis=0))/(np.std(team_rankings_data.iloc[:,1:], axis=0))
 
@@ -669,7 +670,7 @@ class CbbDataLayer():
         efficiency.columns = ['name', 'offensive_efficiency']
         
         ##Convert string to float
-        efficiency['offensive_efficiency'] = efficiency['offensive_efficiency'].astype('float')
+        efficiency['offensive_efficiency'] = efficiency['offensive_efficiency'].str.rstrip('%').astype('float')
 
         return efficiency
 
@@ -701,7 +702,7 @@ class CbbDataLayer():
         efficiency.columns = ['name', 'defensive_efficiency']
         
         ##Convert string to float
-        efficiency['defensive_efficiency'] = efficiency['defensive_efficiency'].astype('float')
+        efficiency['defensive_efficiency'] = efficiency['defensive_efficiency'].str.rstrip('%').astype('float')
 
         return efficiency
 
