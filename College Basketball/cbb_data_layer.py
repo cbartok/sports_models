@@ -14,11 +14,7 @@ import re
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
-import smtplib
-from email.mime.application import MIMEApplication
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.utils import COMMASPACE
+from sklearn.preprocessing import StandardScaler
 
 
 class CbbDataLayer():
@@ -401,7 +397,7 @@ class CbbDataLayer():
         First, normalize all columns after a certain index        
         Then, calculate the difference between the two teams with the opposing stats.
 
-        All of these comparitive stats will be in terms of the home team
+        All of these comparative stats will be in terms of the home team
         '''
         
         ##First ensure that all columns are numeric
@@ -898,6 +894,168 @@ class CbbDataLayer():
 
         return ft_rate
 
+    def pull_tempo(self, year=None):
+        '''
+        Pull possessions per game for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/possessions-per-game?date=' + str(
+                year) + '-05-01'
+        else:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/possessions-per-game'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        tempo = pd.DataFrame(res)
+        tempo = tempo[[1, 2]]
+        tempo = tempo[tempo[2] != '--']
+        tempo.columns = ['name', 'possessions_per_game']
+
+        return tempo
+
+    def pull_three_point_rate(self, year=None):
+        '''
+        Pull three point rate for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/three-point-rate?date=' + str(
+                year) + '-05-01'
+        else:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/three-point-rate'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        three_point_rate = pd.DataFrame(res)
+        three_point_rate = three_point_rate[[1, 2]]
+        three_point_rate = three_point_rate[three_point_rate[2] != '--']
+        three_point_rate.columns = ['name', 'three_point_rate']
+
+        ##Convert string to float
+        three_point_rate['three_point_rate'] = three_point_rate['three_point_rate'].str.rstrip('%').astype('float') / 100.0
+
+        return three_point_rate
+
+    def pull_opp_three_point_rate(self, year=None):
+        '''
+        Pull opponent three point rate for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-three-point-rate?date=' + str(
+                year) + '-05-01'
+        else:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-three-point-rate'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        three_point_rate = pd.DataFrame(res)
+        three_point_rate = three_point_rate[[1, 2]]
+        three_point_rate = three_point_rate[three_point_rate[2] != '--']
+        three_point_rate.columns = ['name', 'opp_three_point_rate']
+
+        ##Convert string to float
+        three_point_rate['opp_three_point_rate'] = three_point_rate['opp_three_point_rate'].str.rstrip('%').astype('float') / 100.0
+
+        return three_point_rate
+
+    def pull_foul_rate(self, year=None):
+        '''
+        Pull foul rate for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/personal-fouls-per-possession?date=' + str(
+                year) + '-05-01'
+        else:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/personal-fouls-per-possession'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        foul_rate = pd.DataFrame(res)
+        foul_rate = foul_rate[[1, 2]]
+        foul_rate = foul_rate[foul_rate[2] != '--']
+        foul_rate.columns = ['name', 'foul_rate']
+
+        ##Convert string to float
+        foul_rate['foul_rate'] = foul_rate['foul_rate'].str.rstrip('%').astype('float') / 100.0
+
+        return foul_rate
+
+    def pull_opp_foul_rate(self, year=None):
+        '''
+        Pull opponent foul rate for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-personal-fouls-per-possession?date=' + str(
+                year) + '-05-01'
+        else:
+            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-personal-fouls-per-possession'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        foul_rate = pd.DataFrame(res)
+        foul_rate = foul_rate[[1, 2]]
+        foul_rate = foul_rate[foul_rate[2] != '--']
+        foul_rate.columns = ['name', 'opp_foul_rate']
+
+        ##Convert string to float
+        foul_rate['opp_foul_rate'] = foul_rate['opp_foul_rate'].str.rstrip('%').astype('float') / 100.0
+
+        return foul_rate
+
     def pull_historical_odds(self, subfolder_name=r'\CBB Historical Odds'):
         '''
         Compile historical closing odds from excel files from sportsbookreviewsonline
@@ -1033,3 +1191,56 @@ class CbbDataLayer():
         daily_odds['spread'] = np.where(daily_odds['spread'] == '', daily_odds['spread2'], daily_odds['spread'])
         daily_odds.drop('spread2', axis=1, inplace=True)
         return daily_odds
+
+    def create_historical_clustering_dataframe(self, first_year=2015, last_year=2020):
+        '''
+        Compiles a complete dataframe of stats to use to train clustering model
+        Uses specified years given
+        Note: 2015 is the first available year
+        '''
+        full_data = []
+        ##Pull the historical data for each specified year
+        for year in range(first_year, last_year + 1):
+            subset = self.create_clustering_dataframe(year)
+            full_data.append(subset)
+
+        full_data = pd.concat(full_data)
+        full_data = full_data.reset_index(drop=True)
+        return full_data
+
+    def create_clustering_dataframe(self, year=None):
+        '''
+        Pull the dataframe for the given year to be used for the clustering model.
+        Stats include tempo, off/def rebounding rates, off/def foul rates, off/def 3 point rates
+        '''
+        ##Pull all of the stats needed for clustering
+        cluster_dataframe = self.pull_tempo(year)
+
+        off_rebounding = self.pull_offensive_rebounding_percentage(year)
+        cluster_dataframe = cluster_dataframe.merge(off_rebounding, how='left')
+
+        def_rebounding = self.pull_defensive_rebounding_percentage(year)
+        cluster_dataframe = cluster_dataframe.merge(def_rebounding, how='left')
+
+        foul_rate = self.pull_foul_rate(year)
+        cluster_dataframe = cluster_dataframe.merge(foul_rate, how='left')
+
+        opp_foul_rate = self.pull_opp_foul_rate(year)
+        cluster_dataframe = cluster_dataframe.merge(opp_foul_rate, how='left')
+
+        three_point_rate = self.pull_three_point_rate(year)
+        cluster_dataframe = cluster_dataframe.merge(three_point_rate, how='left')
+
+        opp_three_point_rate = self.pull_opp_three_point_rate(year)
+        cluster_dataframe = cluster_dataframe.merge(opp_three_point_rate, how='left')
+
+        ##Normalize the data
+        columns_to_norm = ['possessions_per_game', 'three_point_rate', 'opp_three_point_rate',\
+                           'foul_rate', 'opp_foul_rate', 'off_rebounding_percentage', 'def_rebounding_percentage']
+        cluster_dataframe[columns_to_norm] = StandardScaler().fit_transform(cluster_dataframe[columns_to_norm])
+
+        ##Add the year to the dataframe
+        cluster_dataframe['year'] = year
+
+        return cluster_dataframe
+
