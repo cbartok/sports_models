@@ -1,6 +1,6 @@
-from sportsreference.ncaab.teams import Teams
-from sportsreference.ncaab.schedule import Schedule
-from sportsreference.ncaab.boxscore import Boxscore, Boxscores
+from sportsipy.ncaab.teams import Teams
+from sportsipy.ncaab.schedule import Schedule
+from sportsipy.ncaab.boxscore import Boxscore, Boxscores
 import pandas as pd
 import numpy as np
 from scipy import stats
