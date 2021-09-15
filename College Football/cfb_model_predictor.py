@@ -4,6 +4,15 @@ import os
 import cfb_model_builder as cmb
 import cfb_data_layer as cdl
 
+def create_ensemble_fit_table(model_list, features):
+    '''
+    Create a dataframe of predictions for all models in the ensemble
+    '''
+    forecast_fit_table = pd.DataFrame()
+    for model in model_list:
+        forecast_fit_table['{}_FIT'.format(model['name'])] = model['model'].predict(features)
+    return forecast_fit_table
+
 todays_date = pd.to_datetime('today')
 
 ##Import the existing model
@@ -35,7 +44,8 @@ model_data = model_data.drop(['spread', 'date', 'home_name', 'away_name'], axis=
 game_features = np.array(model_data)
 
 ##Use the model to make predictions for this week's games
-predictions = pd.Series(cfb_model.predict(game_features))
+ensemble_model_predictions = create_ensemble_fit_table(cfb_model.model_list, game_features)
+predictions = np.dot(ensemble_model_predictions, cfb_model.weights)
 
 ##Return the results of the prediction
 results = pd.concat([data[['away_name', 'home_name', 'spread']], predictions], axis=1)

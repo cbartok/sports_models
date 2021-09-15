@@ -1078,3 +1078,4 @@ class CfbDataLayer():
 
         daily_odds = pd.DataFrame(daily_odds)
         return daily_odds
+
