@@ -1147,7 +1147,8 @@ class CbbDataLayer():
         Pull all odds for the given date from sportsbook review
         '''
         url = 'https://classic.sportsbookreview.com/betting-odds/ncaa-basketball/?date=' + str(games_date.date()).replace('-','')
-        raw_data = requests.get(url)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+        raw_data = requests.get(url, headers=headers)
         soup = BeautifulSoup(raw_data.text, 'html.parser')
         if soup.find_all('div', id='OddsGridModule_14'):
             soup = soup.find_all('div', id='OddsGridModule_14')[0]

@@ -3,6 +3,9 @@ import numpy as np
 import os
 import cfb_model_builder as cmb
 import cfb_data_layer as cdl
+from collections import namedtuple
+
+EnsembleModel = namedtuple('EnsembleModel', ['weights', 'model_list'])
 
 def create_ensemble_fit_table(model_list, features):
     '''
@@ -43,13 +46,17 @@ model_data['neutral'] = np.where(model_data['neutral'] == 1, 1, 0)
 model_data = model_data.drop(['spread', 'date', 'home_name', 'away_name'], axis=1)
 game_features = np.array(model_data)
 
+if not full_model:
+    #Remove all columns that are not used in the partial model
+    game_features = game_features[:, 0:9]
+
 ##Use the model to make predictions for this week's games
 ensemble_model_predictions = create_ensemble_fit_table(cfb_model.model_list, game_features)
 predictions = np.dot(ensemble_model_predictions, cfb_model.weights)
 
 ##Return the results of the prediction
-results = pd.concat([data[['away_name', 'home_name', 'spread']], predictions], axis=1)
-results.columns = ['away_name', 'home_name', 'spread', 'prediction']
+results = data[['away_name', 'home_name', 'spread']].copy()
+results['prediction'] = predictions
 results['difference'] = results['prediction'] - results['spread']
 results.to_csv('cfb_predictions.csv', index=False)
 

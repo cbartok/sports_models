@@ -398,7 +398,14 @@ class CfbDataLayer():
         Unfortunately, using the webscraping means that I have to hardcode in values to make it work correctly
         '''
         ##Create the urls which we will use to webscrape
-        f_url = 'https://www.footballoutsiders.com/stats/fplus/' + str(year)
+        if year is None:
+            todays_date = pd.to_datetime('today')
+            if 1 <= todays_date.month <= 2:
+                year = todays_date.year - 1
+            else:
+                year = todays_date.year
+
+        f_url = 'https://www.footballoutsiders.com/stats/ncaa/fplus/' + str(year)
         f_url = requests.get(f_url).text
         soup = BeautifulSoup(f_url, 'lxml')
 
@@ -422,7 +429,7 @@ class CfbDataLayer():
 
         historical_fo_stats = pd.DataFrame(res)
         historical_fo_stats = historical_fo_stats[[1,3,8,10]]
-        historical_fo_stats.columns = ['name', 'f+/-', 's&p+', 'fei']
+        historical_fo_stats.columns = ['name', 'f+/-', 'fei', 's&p+']
         ##convert all of the string numbers to numerics
         historical_fo_stats['f+/-'] = historical_fo_stats['f+/-'].str.rstrip('%').astype('float')
         historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:].apply(pd.to_numeric, errors='coerce')
@@ -1042,7 +1049,8 @@ class CfbDataLayer():
         Pull all odds for the given date from sportsbook review
         '''
         url = 'https://classic.sportsbookreview.com/betting-odds/college-football/?date=' + str(games_date.date()).replace('-','')
-        raw_data = requests.get(url)
+        headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+        raw_data = requests.get(url, headers=headers)
         soup = BeautifulSoup(raw_data.text, 'html.parser')
         if soup.find_all('div', id='OddsGridModule_6'):
             soup = soup.find_all('div', id='OddsGridModule_6')[0]
@@ -1056,7 +1064,6 @@ class CfbDataLayer():
         daily_odds['spread'] = pd.to_numeric(daily_odds['spread'].map(lambda x: x.strip('+')))
 
         return daily_odds
-        
 
     def parse_daily_odds(self, soup):
         '''
@@ -1078,4 +1085,3 @@ class CfbDataLayer():
 
         daily_odds = pd.DataFrame(daily_odds)
         return daily_odds
-

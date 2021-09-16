@@ -6,7 +6,9 @@ from sklearn import linear_model, svm, tree, ensemble
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV, RandomizedSearchCV
 from sklearn.metrics import mean_absolute_error, make_scorer
 import xgboost as xgb
+from collections import namedtuple
 
+EnsembleModel = namedtuple('EnsembleModel', ['weights', 'model_list'])
 def import_cfb_model(folder_path=None, file_name='cfb_model.pickle'):
         '''
         Load a saved cfb model
