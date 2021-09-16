@@ -1,6 +1,6 @@
-from sportsreference.ncaaf.teams import Teams
-from sportsreference.ncaaf.schedule import Schedule
-from sportsreference.ncaaf.boxscore import Boxscore, Boxscores
+from sportsipy.ncaaf.teams import Teams
+from sportsipy.ncaaf.schedule import Schedule
+from sportsipy.ncaaf.boxscore import Boxscore, Boxscores
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -96,18 +96,6 @@ class CfbDataLayer():
         data = data.merge(away_advanced_stats, how='left')
         data = data.merge(home_advanced_stats, how='left')
 
-        ##Pull and merge massey composite rankings
-        massey_rankings = self.pull_massey_composite_rankings()
-
-        away_massey = massey_rankings.copy()
-        home_massey = massey_rankings.copy()
-
-        away_massey.columns = ['away_' + str(col) for col in away_massey.columns]
-        home_massey.columns = ['home_' + str(col) for col in home_massey.columns]
-
-        data = data.merge(away_massey, how='left')
-        data = data.merge(home_massey, how='left')
-
         ##Pull and merge teamrankings data
         team_rankings_data = self.pull_team_rankings_data()
 
@@ -172,6 +160,7 @@ class CfbDataLayer():
         reversed_odds['away_name'] = odds['home_name']
         reversed_odds['close'] = -odds['close']
         reversed_odds['year'] = odds['year']
+        reversed_odds['date'] = odds['date']
         odds = pd.concat([odds, reversed_odds])
 
         ##Merge odds in
@@ -211,18 +200,6 @@ class CfbDataLayer():
 
         historical_data = historical_data.merge(away_advanced_stats, how='left')
         historical_data = historical_data.merge(home_advanced_stats, how='left')
-
-        ##Pull and merge massey composite rankings
-        historical_massey_rankings = self.pull_massey_composite_rankings(year)
-
-        away_massey = historical_massey_rankings.copy()
-        home_massey = historical_massey_rankings.copy()
-
-        away_massey.columns = ['away_' + str(col) for col in away_massey.columns]
-        home_massey.columns = ['home_' + str(col) for col in home_massey.columns]
-
-        historical_data = historical_data.merge(away_massey, how='left')
-        historical_data = historical_data.merge(home_massey, how='left')
 
         ##Pull and merge teamrankings data
         historical_team_rankings_data = self.pull_team_rankings_data(year)
@@ -278,7 +255,6 @@ class CfbDataLayer():
         updated_data['fei'] = data['home_fei'] - data['away_fei'] 
 
         ##Lower rank indicates a better team
-        updated_data['average_ranking'] = -data['home_average_ranking'] + data['away_average_ranking']
         updated_data['team_rankings_rating'] = data['home_team_rankings_rating'] - data['away_team_rankings_rating']
         updated_data['strength_of_schedule'] = data['home_strength_of_schedule'] - data['away_strength_of_schedule']
 
@@ -291,6 +267,14 @@ class CfbDataLayer():
         updated_data['home_yards_per_play'] = data['home_yards_per_play'] + data['away_opponent_yards_per_play']
         updated_data['home_yards_per_rush'] = data['home_yards_per_rush'] + data['away_opponent_yards_per_rush']
         updated_data['home_yards_per_pass'] = data['home_yards_per_pass'] + data['away_opponent_yards_per_pass']
+
+        ##High sacked percentage indicates worse performance
+        updated_data['away_sacked_percentage'] = data['away_qb_sacked_percentage'] + data['home_sack_percentage']
+        updated_data['home_sacked_percentage'] = -data['home_qb_sacked_percentage'] - data['away_sack_percentage']
+
+        ##Turnover margin
+        updated_data['away_turnovers'] = data['away_giveaways_per_game'] + data['home_takeaways_per_game']
+        updated_data['home_turnovers'] = -data['home_giveaways_per_game'] - data['away_takeaways_per_game']
         
         return updated_data
 
@@ -414,17 +398,21 @@ class CfbDataLayer():
         Unfortunately, using the webscraping means that I have to hardcode in values to make it work correctly
         '''
         ##Create the urls which we will use to webscrape
-        if year is not None:
-            f_url = 'https://www.footballoutsiders.com/stats/fplus/' + str(year)
-        else:
-            f_url = 'https://www.footballoutsiders.com/stats/fplus/'
+        if year is None:
+            todays_date = pd.to_datetime('today')
+            if 1 <= todays_date.month <= 2:
+                year = todays_date.year - 1
+            else:
+                year = todays_date.year
+
+        f_url = 'https://www.footballoutsiders.com/stats/ncaa/fplus/' + str(year)
         f_url = requests.get(f_url).text
         soup = BeautifulSoup(f_url, 'lxml')
 
         ##Find the table on the page
         ##The most recent table has a different class than past tables
         ##If the first find does not work, we try the second
-        classes = ['stats', 'sticky-headers sortable stats', 'sticky-headers sortable stats-wide sticky-enabled']
+        classes = ['stats', 'sticky-headers sortable stats', 'sticky-headers sortable stats-wide sticky-enabled', 'new-table']
         for c in classes:
             f_table = soup.find('table', attrs={'class':c})
             if f_table is not None:
@@ -440,36 +428,10 @@ class CfbDataLayer():
                 res.append(row)
 
         historical_fo_stats = pd.DataFrame(res)
-        
-        ##Different years have different formats
-        ##Format the data based on how the data is returned    
-        if year is None:
-            historical_fo_stats = historical_fo_stats[[0,2,4,6]]
-        elif year == 2018:
-            historical_fo_stats = historical_fo_stats[[0,3,7,9]]
-        elif year == 2014 or year < 2013:
-            historical_fo_stats = historical_fo_stats[[1,3,4,6]]
-            historical_fo_header = historical_fo_stats.iloc[0]
-            historical_fo_stats = historical_fo_stats.iloc[1:]
-            historical_fo_stats.columns = historical_fo_header.str.lower()
-            historical_fo_stats = historical_fo_stats[historical_fo_stats['team'] != 'Team']
-        elif year == 2013:
-            historical_fo_stats = historical_fo_stats[[1,3,12,14]]
-            historical_fo_header = historical_fo_stats.iloc[0]
-            historical_fo_stats = historical_fo_stats.iloc[1:]
-            historical_fo_stats.columns = historical_fo_header.str.lower()
-            historical_fo_stats = historical_fo_stats[historical_fo_stats['team'] != 'Team']
-        else:
-            historical_fo_stats = historical_fo_stats[[0,3,5,7]]
-            historical_fo_header = historical_fo_stats.iloc[0]
-            historical_fo_stats = historical_fo_stats.iloc[1:]
-            historical_fo_stats.columns = historical_fo_header.str.lower()
-            historical_fo_stats = historical_fo_stats[historical_fo_stats['team'] != 'Team']
-        
-        historical_fo_stats.columns = ['name', 'f+/-', 's&p+', 'fei']
-        ##F+/- is formatted as a percentage string so convert to a decimal
-        ##Also convert all of the string numbers to numerics
-        historical_fo_stats['f+/-'] = historical_fo_stats['f+/-'].str.rstrip('%').astype('float') / 100.0
+        historical_fo_stats = historical_fo_stats[[1,3,8,10]]
+        historical_fo_stats.columns = ['name', 'f+/-', 'fei', 's&p+']
+        ##convert all of the string numbers to numerics
+        historical_fo_stats['f+/-'] = historical_fo_stats['f+/-'].str.rstrip('%').astype('float')
         historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:].apply(pd.to_numeric, errors='coerce')
         historical_fo_stats.iloc[:,1:] = (historical_fo_stats.iloc[:,1:] - np.mean(historical_fo_stats.iloc[:,1:], axis=0))/(np.std(historical_fo_stats.iloc[:,1:], axis=0))
 
@@ -571,6 +533,18 @@ class CfbDataLayer():
         opponent_yards_per_pass = self.pull_opponent_yards_per_pass(year)
         team_rankings_data = team_rankings_data.merge(opponent_yards_per_pass, how='left')
 
+        qb_sacked_percentage = self.pull_off_sacked_percentage(year)
+        team_rankings_data = team_rankings_data.merge(qb_sacked_percentage, how='left')
+
+        sack_percentage = self.pull_def_sack_percentage(year)
+        team_rankings_data = team_rankings_data.merge(sack_percentage, how='left')
+
+        giveaways_per_game = self.pull_giveaways_per_game(year)
+        team_rankings_data = team_rankings_data.merge(giveaways_per_game, how='left')
+
+        takeaways_per_game = self.pull_takeaways_per_game(year)
+        team_rankings_data = team_rankings_data.merge(takeaways_per_game, how='left')
+
         ##Update the team names to match the base
         team_rankings_data['name'] = team_rankings_data['name'].apply(lambda x: x.replace(' St', ' State') if ' State' not in x else x)
         team_rankings_data['name'].replace(self.team_replace, inplace=True)
@@ -580,7 +554,6 @@ class CfbDataLayer():
         team_rankings_data.iloc[:,1:] = (team_rankings_data.iloc[:,1:] - np.mean(team_rankings_data.iloc[:,1:], axis=0))/(np.std(team_rankings_data.iloc[:,1:], axis=0))
 
         return team_rankings_data
-
 
     def pull_team_rankings_ratings(self, year=None):
         '''
@@ -868,6 +841,124 @@ class CfbDataLayer():
 
         return opponent_yards_per_pass
 
+    def pull_off_sacked_percentage(self, year=None):
+        '''
+        Pull qb sacked percentage for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/college-football/stat/qb-sacked-pct?date=' + str(year+1)+ '-02-01'
+        else:
+            url = 'https://www.teamrankings.com/college-football/stat/qb-sacked-pct'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        qb_sacked_percentage = pd.DataFrame(res)
+        qb_sacked_percentage = qb_sacked_percentage[[1,2]]
+        qb_sacked_percentage.columns = ['name', 'qb_sacked_percentage']
+
+        ##Convert string to float
+        qb_sacked_percentage['qb_sacked_percentage'] = qb_sacked_percentage['qb_sacked_percentage'].str.rstrip('%').astype('float') / 100.0
+
+        return qb_sacked_percentage
+
+    def pull_def_sack_percentage(self, year=None):
+        '''
+        Pull defensive sack percentage for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/college-football/stat/sack-pct?date=' + str(year+1)+ '-02-01'
+        else:
+            url = 'https://www.teamrankings.com/college-football/stat/sack-pct'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        sack_percentage = pd.DataFrame(res)
+        sack_percentage = sack_percentage[[1,2]]
+        sack_percentage.columns = ['name', 'sack_percentage']
+
+        ##Convert string to float
+        sack_percentage['sack_percentage'] = sack_percentage['sack_percentage'].str.rstrip('%').astype('float') / 100.0
+
+        return sack_percentage
+
+    def pull_giveaways_per_game(self, year=None):
+        '''
+        Pull giveaways per game for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/college-football/stat/giveaways-per-game?date=' + str(year+1)+ '-02-01'
+        else:
+            url = 'https://www.teamrankings.com/college-football/stat/giveaways-per-game'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        giveaways_per_game = pd.DataFrame(res)
+        giveaways_per_game = giveaways_per_game[[1,2]]
+        giveaways_per_game.columns = ['name', 'giveaways_per_game']
+
+        return giveaways_per_game
+
+    def pull_takeaways_per_game(self, year=None):
+        '''
+        Pull takeaways per game for the specified year
+        '''
+        if year is not None:
+            url = 'https://www.teamrankings.com/college-football/stat/takeaways-per-game?date=' + str(year+1)+ '-02-01'
+        else:
+            url = 'https://www.teamrankings.com/college-football/stat/takeaways-per-game'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        res = []
+        for tr in table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        takeaways_per_game = pd.DataFrame(res)
+        takeaways_per_game = takeaways_per_game[[1,2]]
+        takeaways_per_game.columns = ['name', 'takeaways_per_game']
+
+        return takeaways_per_game
+
     def pull_historical_odds(self, subfolder_name=r'\CFB Historical Odds'):
         '''
         Compile historical closing odds from excel files from sportsbookreviewsonline
@@ -958,7 +1049,8 @@ class CfbDataLayer():
         Pull all odds for the given date from sportsbook review
         '''
         url = 'https://classic.sportsbookreview.com/betting-odds/college-football/?date=' + str(games_date.date()).replace('-','')
-        raw_data = requests.get(url)
+        headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
+        raw_data = requests.get(url, headers=headers)
         soup = BeautifulSoup(raw_data.text, 'html.parser')
         if soup.find_all('div', id='OddsGridModule_6'):
             soup = soup.find_all('div', id='OddsGridModule_6')[0]
@@ -972,7 +1064,6 @@ class CfbDataLayer():
         daily_odds['spread'] = pd.to_numeric(daily_odds['spread'].map(lambda x: x.strip('+')))
 
         return daily_odds
-        
 
     def parse_daily_odds(self, soup):
         '''
@@ -994,4 +1085,3 @@ class CfbDataLayer():
 
         daily_odds = pd.DataFrame(daily_odds)
         return daily_odds
-
