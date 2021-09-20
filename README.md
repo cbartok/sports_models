@@ -1,10 +1,10 @@
 # sports_models
 Repo containing code for models for various sports in python
 
-This model is built off of the sportsreference python package (https://github.com/roclark/sportsreference) and uses selenium and beautifulsoup to pull stats.
+This model is built off of the sportsipy python package (https://github.com/roclark/sportsipy) and uses selenium and beautifulsoup to pull stats.
 
 Sports:
-College Football (completed 9/2019),
+College Football (updated 9/2021),
 Nfl (completed 9/2019),
 College Basketball (completed 12/2019)
 
@@ -15,3 +15,5 @@ numpy version 1.16.4
 pandas version 0.24.2
 scikit-learn version 0.21.2
 selenium version 3.141.0
+gspread 4.0.1
+oauth2client 4.1.3

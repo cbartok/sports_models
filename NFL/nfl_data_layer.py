@@ -1,6 +1,6 @@
-from sportsreference.nfl.teams import Teams
-from sportsreference.nfl.schedule import Schedule
-from sportsreference.nfl.boxscore import Boxscore, Boxscores
+from sportsipy.nfl.teams import Teams
+from sportsipy.nfl.schedule import Schedule
+from sportsipy.nfl.boxscore import Boxscore, Boxscores
 import pandas as pd
 import numpy as np
 from scipy import stats
