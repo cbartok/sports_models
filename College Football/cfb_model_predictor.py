@@ -4,6 +4,8 @@ import os
 import cfb_model_builder as cmb
 import cfb_data_layer as cdl
 from collections import namedtuple
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 EnsembleModel = namedtuple('EnsembleModel', ['weights', 'model_list'])
 
@@ -60,5 +62,16 @@ results['prediction'] = predictions
 results['difference'] = results['prediction'] - results['spread']
 results.to_csv('cfb_predictions.csv', index=False)
 
+scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
+         "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+
+key_path = os.path.join(os.path.dirname(os.getcwd()), 'google.json')
+credentials = ServiceAccountCredentials.from_json_keyfile_name(key_path, scope)
+client = gspread.authorize(credentials)
+
+spreadsheet = client.open('CFB Model Predictions')
+with open('cfb_predictions.csv', 'r') as file_obj:
+    content = file_obj.read()
+    client.import_csv(spreadsheet.id, data=content)
 
 
