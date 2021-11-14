@@ -1076,12 +1076,18 @@ class CfbDataLayer():
             away_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[0].get_text().strip()
             home_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[1].get_text().strip()
             ##Pinnacle is Book ID 238
-            away_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[0].get_text().strip()
-            home_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[1].get_text().strip()
+            ##Use Bet365 - 43 as backup
+            try:
+                away_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[0].get_text().strip()
+                home_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[1].get_text().strip()
+            except:
+                away_odds = soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all('div')[0].get_text().strip()
+                home_odds = soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all('div')[1].get_text().strip()
             ##Get the spread number only so we only need the away team's odds
             odds = away_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
             odds = odds[:odds.find(' ')]
             daily_odds.append({'away_name':away_team, 'home_name':home_team, 'spread':odds})
+
 
         daily_odds = pd.DataFrame(daily_odds)
         return daily_odds
