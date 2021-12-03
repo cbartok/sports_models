@@ -1075,14 +1075,14 @@ class CfbDataLayer():
         for game_number in range(number_of_games):
             away_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[0].get_text().strip()
             home_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[1].get_text().strip()
-            ##Pinnacle is Book ID 238
-            ##Use Bet365 - 43 as backup
+            ##Unibet 1244 as first choice
+            ##Use Betway 3970 as backup
             try:
-                away_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[0].get_text().strip()
-                home_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[1].get_text().strip()
+                away_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'1244'})[game_number].find_all('div')[0].get_text().strip()
+                home_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'1244'})[game_number].find_all('div')[1].get_text().strip()
             except:
-                away_odds = soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all('div')[0].get_text().strip()
-                home_odds = soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all('div')[1].get_text().strip()
+                away_odds = soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '3970'})[game_number].find_all('div')[0].get_text().strip()
+                home_odds = soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '3970'})[game_number].find_all('div')[1].get_text().strip()
             ##Get the spread number only so we only need the away team's odds
             odds = away_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
             odds = odds[:odds.find(' ')]

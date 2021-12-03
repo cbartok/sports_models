@@ -77,7 +77,8 @@ class CbbDataLayer():
                             'USCUpstate':'USC Upstate', 'Tennessee-Martin':'UT-Martin', 'Central Connecticut State':'Central Connecticut', 'Illinois-Chicago':'UIC',\
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
                             'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
-                            'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley'}
+                            'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley', 'Bryant University':'Bryant', 'Charleston (WV)':'College of Charleston',\
+                            'Virginia Military':'VMI'}
         self.massey_rating_historical_dates = {2020:'20200311', 2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
@@ -1151,21 +1152,20 @@ class CbbDataLayer():
                 0].get_text().strip()
             home_team = soup.find_all('div', attrs={'class': 'el-div eventLine-team'})[game_number].find_all('div')[
                 1].get_text().strip()
-            ##Pinnacle is Book ID 238
-            ##Use Bet365 - 43 as backup
-            try:
-                away_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '238'})[game_number].find_all(
+            ##Unibet 1244 as first choice
+            ##Use Betway 3970 as backup
+            away_odds = \
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '1244'})[game_number].find_all(
                     'div')[0].get_text().strip()
-                home_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '238'})[game_number].find_all(
+            home_odds = \
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '1244'})[game_number].find_all(
                     'div')[1].get_text().strip()
-            except:
+            if away_odds == '':
                 away_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all(
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '3970'})[game_number].find_all(
                     'div')[0].get_text().strip()
                 home_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all(
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '3970'})[game_number].find_all(
                     'div')[1].get_text().strip()
             ##Get the spread number only so we only need the away team's odds
             odds = away_odds.replace(u'\xa0', ' ').replace(u'\xbd', '.5')
@@ -1173,6 +1173,7 @@ class CbbDataLayer():
             daily_odds.append({'away_name': away_team, 'home_name': home_team, 'spread': odds})
 
         daily_odds = pd.DataFrame(daily_odds)
+        daily_odds.drop_duplicates(['away_name', 'home_name'], keep='first', inplace=True)
         return daily_odds
 
     def create_historical_clustering_dataframe(self, first_year=2015, last_year=2020):

@@ -42,8 +42,9 @@ predictions = np.dot(ensemble_model_predictions, cbb_model.weights)
 results = data[['away_name', 'home_name', 'date', 'spread']].copy()
 results['prediction'] = predictions
 results['difference'] = results['prediction'] - results['spread']
-results = results[results['date'] == pd.to_datetime('today').strftime('%b %d')].drop_duplicates()
-results[['away_name', 'home_name', 'spread', 'prediction']]
+results = results[results['date'] == pd.to_datetime('today').strftime('%b %#d')].drop_duplicates()
+results['difference'] = results['prediction'] - results['spread']
+results = results[['away_name', 'home_name', 'spread', 'prediction', 'difference']]
 results.to_csv('cbb_predictions.csv', index=False)
 
 scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
