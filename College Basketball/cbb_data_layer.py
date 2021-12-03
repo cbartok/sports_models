@@ -106,21 +106,6 @@ class CbbDataLayer():
     def create_dataframe(self, start_date, end_date):
         data = self.pull_schedule(start_date, end_date)
 
-        ##Some locations are nans so set them to be campus games
-        data['neutral'] = np.where(data['neutral'] == 1, 1, 0)
-
-        ##Pull historical massey
-        historical_massey_rankings = self.pull_massey_composite_rankings()
-
-        away_massey = historical_massey_rankings.copy()
-        home_massey = historical_massey_rankings.copy()
-
-        away_massey.columns = ['away_' + str(col) for col in away_massey.columns]
-        home_massey.columns = ['home_' + str(col) for col in home_massey.columns]
-
-        data = data.merge(away_massey, how='left')
-        data = data.merge(home_massey, how='left')
-
         ##Pull Ken Pom data
         historical_ken_pom = self.pull_ken_pom_data()
 
@@ -300,18 +285,6 @@ class CbbDataLayer():
         ##Some locations are nans so set them to be campus games
         historical_data['neutral'] = np.where(historical_data['neutral'] == 1, 1, 0)
 
-        ##Pull historical massey
-        historical_massey_rankings = self.pull_massey_composite_rankings(year)
-
-        away_massey = historical_massey_rankings.copy()
-        home_massey = historical_massey_rankings.copy()
-
-        away_massey.columns = ['away_' + str(col) for col in away_massey.columns]
-        home_massey.columns = ['home_' + str(col) for col in home_massey.columns]
-
-        historical_data = historical_data.merge(away_massey, how='left')
-        historical_data = historical_data.merge(home_massey, how='left')
-
         ##Pull Ken Pom data
         historical_ken_pom = self.pull_ken_pom_data(year)
 
@@ -411,7 +384,6 @@ class CbbDataLayer():
         ##If lower is an indicator of better perfomance, we subtract it from 1
         ##i.e. defensive stats
         ##Lower rank indicates a better team
-        updated_data['average_ranking'] = -data['home_average_ranking'] + data['away_average_ranking']
         updated_data['team_rankings_rating'] = data['home_team_rankings_rating'] - data['away_team_rankings_rating']
         updated_data['strength_of_schedule'] = data['home_strength_of_schedule'] - data['away_strength_of_schedule']
 
@@ -1173,24 +1145,34 @@ class CbbDataLayer():
         '''
         ##Initialize the dataframe
         daily_odds = []
-        number_of_games = len(soup.find_all('div', attrs = {'class':'el-div eventLine-rotation'}))
+        number_of_games = len(soup.find_all('div', attrs={'class': 'el-div eventLine-rotation'}))
         for game_number in range(number_of_games):
-            away_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[0].get_text().strip()
-            home_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[1].get_text().strip()
+            away_team = soup.find_all('div', attrs={'class': 'el-div eventLine-team'})[game_number].find_all('div')[
+                0].get_text().strip()
+            home_team = soup.find_all('div', attrs={'class': 'el-div eventLine-team'})[game_number].find_all('div')[
+                1].get_text().strip()
             ##Pinnacle is Book ID 238
-            pinnacle_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[0].get_text().strip()
-            five_dimes_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'19'})[game_number].find_all('div')[0].get_text().strip()
+            ##Use Bet365 - 43 as backup
+            try:
+                away_odds = \
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '238'})[game_number].find_all(
+                    'div')[0].get_text().strip()
+                home_odds = \
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '238'})[game_number].find_all(
+                    'div')[1].get_text().strip()
+            except:
+                away_odds = \
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all(
+                    'div')[0].get_text().strip()
+                home_odds = \
+                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '43'})[game_number].find_all(
+                    'div')[1].get_text().strip()
             ##Get the spread number only so we only need the away team's odds
-            odds = pinnacle_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
+            odds = away_odds.replace(u'\xa0', ' ').replace(u'\xbd', '.5')
             odds = odds[:odds.find(' ')]
-            secondary_odds = five_dimes_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
-            secondary_odds = secondary_odds[:secondary_odds.find(' ')]
-            daily_odds.append({'away_name':away_team, 'home_name':home_team, 'spread':odds, 'spread2':secondary_odds})
+            daily_odds.append({'away_name': away_team, 'home_name': home_team, 'spread': odds})
 
         daily_odds = pd.DataFrame(daily_odds)
-        ##Fill in missing spread with secondary spread
-        daily_odds['spread'] = np.where(daily_odds['spread'] == '', daily_odds['spread2'], daily_odds['spread'])
-        daily_odds.drop('spread2', axis=1, inplace=True)
         return daily_odds
 
     def create_historical_clustering_dataframe(self, first_year=2015, last_year=2020):
@@ -1244,4 +1226,3 @@ class CbbDataLayer():
         cluster_dataframe['year'] = year
 
         return cluster_dataframe
-
