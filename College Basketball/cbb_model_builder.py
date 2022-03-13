@@ -35,5 +35,3 @@ def build_cbb_clustering_model():
                        'foul_rate', 'opp_foul_rate', 'off_rebounding_percentage', 'def_rebounding_percentage']
 
     return training_data
-
-build_cbb_clustering_model()

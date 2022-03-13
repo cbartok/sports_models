@@ -46,7 +46,7 @@ class CbbDataLayer():
                             'N Colorado':'Northern Colorado', "Mt State Mary's":"Mount St. Mary's", 'N Dakota State':'North Dakota State', 'Southern Univ':'Southern',\
                             "St Joseph's PA":"St. Joseph's", 'NE Omaha':'Omaha', 'MS Valley State':'Mississippi Valley State', 'UC Davis':'UC-Davis', 'S Illinois':'Southern Illinois',\
                             'E Illinois':'Eastern Illinois', 'North Carolina':'UNC', 'FIU':'Florida International', 'Albany':'Albany (NY)', 'Bethune Cookman':'Bethune-Cookman',\
-                            "St. John's":"St. John's (NY)", 'UT Rio Grande Valley':'Texas-Rio Grande Valley', 'Illinois Chicago':'UIC', 'The Citadel':'Citadel',\
+                            "St. John's":"St. John's (NY)", 'UT Rio Grande Valley':'Texas-Rio Grande Valley', 'Illinois Chicago':'UIC', 'Citadel':'The Citadel',\
                             'Texas A&M Corpus Chris':'Texas A&M-Corpus Christi', 'Maryland Eastern Shore':'Maryland-Eastern Shore', 'N.C. State':'NC State',\
                             'Loyola Chicago':'Loyola (IL)', 'Fort Wayne':'Purdue-Fort Wayne', 'UMass Lowell':'UMass-Lowell', 'Arkansas Pine Bluff':'Arkansas-Pine Bluff',\
                             'Louisiana Lafayette':'Louisiana', 'Tennessee Martin':'UT-Martin', 'SIU Edwardsville':'SIU-Edwardsville', 'Louisiana Monroe':'Louisiana-Monroe',\
@@ -78,7 +78,7 @@ class CbbDataLayer():
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
                             'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
                             'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley', 'Bryant University':'Bryant', 'Charleston (WV)':'College of Charleston',\
-                            'Virginia Military':'VMI'}
+                            'Virginia Military':'VMI', 'American University':'American', 'Virginia Commonwealth':'VCU'}
         self.massey_rating_historical_dates = {2020:'20200311', 2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
@@ -1097,7 +1097,7 @@ class CbbDataLayer():
         if start_date < pd.to_datetime('today'):
             start_date = pd.to_datetime('today')
 
-        date_range = pd.date_range(start_date, end_date+pd.DateOffset(1))
+        date_range = pd.date_range(start_date, end_date)
         full_odds = []
         for day in date_range:
             daily_odds = self.pull_current_daily_odds(day)
@@ -1170,7 +1170,8 @@ class CbbDataLayer():
             ##Get the spread number only so we only need the away team's odds
             odds = away_odds.replace(u'\xa0', ' ').replace(u'\xbd', '.5')
             odds = odds[:odds.find(' ')]
-            daily_odds.append({'away_name': away_team, 'home_name': home_team, 'spread': odds})
+            if odds != '':
+                daily_odds.append({'away_name': away_team, 'home_name': home_team, 'spread': odds})
 
         daily_odds = pd.DataFrame(daily_odds)
         daily_odds.drop_duplicates(['away_name', 'home_name'], keep='first', inplace=True)
