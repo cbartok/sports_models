@@ -6,7 +6,7 @@ This model is built off of the sportsipy python package (https://github.com/rocl
 Sports:
 College Football (updated 9/2021),
 Nfl (completed 9/2019),
-College Basketball (completed 12/2019)
+College Basketball (updated 3/2022)
 
 Packages
 ============
