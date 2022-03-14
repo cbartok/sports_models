@@ -36,7 +36,7 @@ class CbbDataLayer():
                             'IL Chicago':'UIC', 'Boston Univ':'Boston University', 'TAM C. Christi':'Texas A&M-Corpus Christi', 'Coastal Car':'Coastal Carolina',\
                             'St Louis':'Saint Louis', 'Col Charleston':'College of Charleston', 'C Michigan':'Central Michigan', 'E Michigan':'Eastern Michigan',\
                             'MTSU':'Middle Tennessee', 'MD E Shore':'Maryland-Eastern Shore', 'E Washington':'Eastern Washington', 'CS Bakersfield':'Cal State Bakersfield',\
-                            'WI Milwaukee':'Milwaukee', 'Loyola-Chicago':'Loyola (IL)', "St Mary's CA":"Saint Mary's", 'FL Gulf Coast':'Florida Gulf Coast', 'UT Arlington':'Texas-Arlington',\
+                            'WI Milwaukee':'Milwaukee', 'Loyola-Chicago':'Loyola (IL)', "St Mary's CA":"Saint Mary's", "Saint Mary's (CA)":"Saint Mary's", 'FL Gulf Coast':'Florida Gulf Coast', 'UT Arlington':'Texas-Arlington',\
                             'UC Santa Barbara':'UCSB', 'Ark Little Rock':'Little Rock', 'W Illinois':'Western Illinois', 'W Michigan':'Western Michigan', 'Kent':'Kent State',\
                             'PFW':'Purdue-Fort Wayne', 'UT San Antonio':'UTSA', 'Northwestern LA':'Northwestern State', 'S Dakota St':'South Dakota State', 'MA Lowell':'UMass-Lowell',\
                             'Pittsburgh':'Pitt', 'Houston Bap':'Houston Baptist', 'N Illinois':'Northern Illinois', 'CS Sacramento':'Sacramento State', 'Miami OH':'Miami (OH)',\
@@ -78,7 +78,7 @@ class CbbDataLayer():
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
                             'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
                             'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley', 'Bryant University':'Bryant', 'Charleston (WV)':'College of Charleston',\
-                            'Virginia Military':'VMI', 'American University':'American', 'Virginia Commonwealth':'VCU'}
+                            'Virginia Military':'VMI', 'American University':'American', 'Virginia Commonwealth':'VCU', 'Southern California':'USC', 'Louisiana State':'LSU'}
         self.massey_rating_historical_dates = {2020:'20200311', 2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
@@ -94,6 +94,7 @@ class CbbDataLayer():
         except:
             teams = Teams(int(pd.to_datetime('now').year) -  1)
         self.all_team_data = teams.dataframes
+        self.all_team_data['name'].replace(self.team_replace, inplace=True)
         self.team_list = list(self.all_team_data['name'].unique())
         self.team_abbreviations = list(self.all_team_data['abbreviation'].unique())
 
@@ -118,6 +119,10 @@ class CbbDataLayer():
         data['away_long_rest'] = 1 if away_rest > 6 else 0
         data['home_short_rest'] = 1 if home_rest == 1 else 0
         data['home_long_rest'] = 1 if home_rest > 0 else 0
+
+        data['away_name'].replace(self.team_replace, inplace=True)
+        data['home_name'].replace(self.team_replace, inplace=True)
+
 
         #Pull Ken Pom data
         ken_pom = self.pull_ken_pom_data()

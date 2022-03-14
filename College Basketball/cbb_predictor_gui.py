@@ -9,6 +9,7 @@ from tkinter import ttk, messagebox
 
 EnsembleModel = namedtuple('EnsembleModel', ['weights', 'model_list'])
 cbb_model = cmb.import_cbb_model(file_name='cbb_model.pickle')
+results_string = []
 
 def create_ensemble_fit_table(model_list, features):
     '''
@@ -44,9 +45,10 @@ def run_model():
     '''
     Run the model given the two user-inputted teams
     '''
+    global results_string
     away = away_combo_box.get()
     home = home_combo_box.get()
-    site = 1 if site_combo_box.get() == 'Vs.' else 0
+    site_binary = 1 if site_combo_box.get() == 'Vs.' else 0
 
     #Check whether the teams are valid
     if away not in team_list:
@@ -54,7 +56,7 @@ def run_model():
     elif home not in team_list:
         messagebox.showerror('Invalid Home Team', 'Please Select a Valid Home Team')
 
-    stats_df = cbb_data.create_single_game_df(away, home, site)
+    stats_df = cbb_data.create_single_game_df(away, home, site_binary)
     model_data = stats_df.copy()
     model_data['neutral'] = np.where(model_data['neutral'] == 1, 1, 0)
     model_data = model_data.drop(['home_name', 'away_name'], axis=1)
@@ -67,15 +69,22 @@ def run_model():
     #If neutral site, it creates two predictions
     #Get the average of the predictions
     if len(prediction) == 2:
-        prediction = (prediction[0] + prediction[1]*-1) / 2
+        original_prediction = (prediction[0] + prediction[1]*-1) / 2
     else:
-        prediction = prediction[0]
+        original_prediction = prediction[0]
 
-    if prediction > 0:
-        messagebox.showinfo('Model Run Finished', '{} favored by {} over {}.'.format(home, prediction, away))
+    if original_prediction > 0:
+        messagebox.showinfo('Model Run Finished', '{} favored by {} over {}.'.format(home, original_prediction, away))
     else:
-        prediction *= -1
+        prediction = original_prediction * -1
         messagebox.showinfo('Model Run Finished', '{} favored by {} over {}.'.format(away, prediction, home))
+
+    result = '{} {} {} - Prediction: {}'.format(away, site_combo_box.get(), home, np.round(original_prediction, 2))
+    results_string.append(result)
+
+def display_results():
+    messagebox.showinfo(title='All Results', message='\n'.join(results_string))
+    root.destroy()
 
 root = Tk()
 root.resizable(True, True)
@@ -102,6 +111,8 @@ home_combo_box.pack(side=LEFT)
 
 run_button = ttk.Button(root, text='Run Model', command=run_model)
 run_button.pack(side=BOTTOM)
+
+root.protocol('WM_DELETE_WINDOW', display_results)
 
 root.mainloop()
 
