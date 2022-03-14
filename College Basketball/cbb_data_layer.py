@@ -104,6 +104,53 @@ class CbbDataLayer():
         teams = Teams(year)
         return teams.dataframes
 
+    def create_single_game_df(self, away, home, neutral, home_rest=2, away_rest=2):
+        '''
+        Create a dataframe for the specified teams
+        '''
+        data = pd.DataFrame()
+        #If neutral site, run both teams as home and away
+        #Not the best but there is model bias toward listed home team even accounting for a neutral site variable
+        data['away_name'] = [away, home] if neutral else [away]
+        data['home_name'] = [home, away] if neutral else [home]
+        data['neutral'] = neutral
+        data['away_short_rest'] = 1 if away_rest == 1 else 0
+        data['away_long_rest'] = 1 if away_rest > 6 else 0
+        data['home_short_rest'] = 1 if home_rest == 1 else 0
+        data['home_long_rest'] = 1 if home_rest > 0 else 0
+
+        #Pull Ken Pom data
+        ken_pom = self.pull_ken_pom_data()
+        away_ken_pom = ken_pom.copy()
+        home_ken_pom = ken_pom.copy()
+
+        away_ken_pom.columns = ['away_' + str(col) for col in away_ken_pom.columns]
+        home_ken_pom.columns = ['home_' + str(col) for col in home_ken_pom.columns]
+
+        data = data.merge(away_ken_pom, how='left')
+        data = data.merge(home_ken_pom, how='left')
+
+        ##Pull and merge teamrankings data
+        team_rankings_data = self.pull_team_rankings_data()
+
+        away_team_rankings = team_rankings_data.copy()
+        home_team_rankings = team_rankings_data.copy()
+
+        away_team_rankings.columns = ['away_' + str(col) for col in away_team_rankings.columns]
+        home_team_rankings.columns = ['home_' + str(col) for col in home_team_rankings.columns]
+
+        data = data.merge(away_team_rankings, how='left')
+        data = data.merge(home_team_rankings, how='left')
+
+        ##Drop all rows with nans
+        ##This is done so we can standardize the stats
+        data.dropna(inplace=True)
+
+        ##Standardize the numeric data and update in terms of strengths of both teams
+        data = self.create_opponent_adjusted_stats(data, 7)
+
+        return data
+
     def create_dataframe(self, start_date, end_date):
         data = self.pull_schedule(start_date, end_date)
 
