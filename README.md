@@ -17,3 +17,4 @@ scikit-learn version 0.21.2
 selenium version 3.141.0
 gspread 4.0.1
 oauth2client 4.1.3
+sportsipy 0.6.0
