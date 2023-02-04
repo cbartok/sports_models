@@ -14,6 +14,7 @@ import re
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
 from sklearn.preprocessing import StandardScaler
 
 
@@ -30,13 +31,13 @@ class CbbDataLayer():
                             'E Kentucky':'Eastern Kentucky', 'FL Atlantic':'Florida Atlantic', 'Ga Southern':'Georgia Southern', 'North Carolina':'UNC', \
                             'Miami FL':'Miami (FL)', 'Monmouth NJ':'Monmouth', 'S Dakota State':'South Dakota State', 'SE Louisiana':'Southeastern Louisiana',\
                             'Connecticut':'UConn', 'N Kentucky':'Northern Kentucky', 'Florida Intl':'Florida International', 'NC A&T':'North Carolina A&T',\
-                            'Abilene Chr':'Abilene Christian', 'G Washington':'George Washington', 'SUNY Albany':'Albany (NY)', 'UAB':'Alabama-Birmingham',\
+                            'Abilene Chr':'Abilene Christian', 'G Washington':'George Washington', 'SUNY Albany':'Albany (NY)',\
                             'CS Northridge':'Cal State Northridge', 'Mississippi':'Ole Miss', 'Massachusetts':'UMass', 'SE Missouri State':'Southeast Missouri State',\
                             'WKU':'Western Kentucky', "St John's":"St. John's (NY)", 'St Bonaventure':'St. Bonaventure', 'UTRGV':'Texas-Rio Grande Valley',\
                             'IL Chicago':'UIC', 'Boston Univ':'Boston University', 'TAM C. Christi':'Texas A&M-Corpus Christi', 'Coastal Car':'Coastal Carolina',\
                             'St Louis':'Saint Louis', 'Col Charleston':'College of Charleston', 'C Michigan':'Central Michigan', 'E Michigan':'Eastern Michigan',\
                             'MTSU':'Middle Tennessee', 'MD E Shore':'Maryland-Eastern Shore', 'E Washington':'Eastern Washington', 'CS Bakersfield':'Cal State Bakersfield',\
-                            'WI Milwaukee':'Milwaukee', 'Loyola-Chicago':'Loyola (IL)', "St Mary's CA":"Saint Mary's", "Saint Mary's (CA)":"Saint Mary's", 'FL Gulf Coast':'Florida Gulf Coast', 'UT Arlington':'Texas-Arlington',\
+                            'WI Milwaukee':'Milwaukee', 'Loyola-Chicago':'Loyola (IL)', "St Mary's CA":"Saint Mary's", "Saint Mary's (CA)":"Saint Mary's", 'FL Gulf Coast':'Florida Gulf Coast', \
                             'UC Santa Barbara':'UCSB', 'Ark Little Rock':'Little Rock', 'W Illinois':'Western Illinois', 'W Michigan':'Western Michigan', 'Kent':'Kent State',\
                             'PFW':'Purdue-Fort Wayne', 'UT San Antonio':'UTSA', 'Northwestern LA':'Northwestern State', 'S Dakota St':'South Dakota State', 'MA Lowell':'UMass-Lowell',\
                             'Pittsburgh':'Pitt', 'Houston Bap':'Houston Baptist', 'N Illinois':'Northern Illinois', 'CS Sacramento':'Sacramento State', 'Miami OH':'Miami (OH)',\
@@ -61,7 +62,7 @@ class CbbDataLayer():
                             'TX A&M-CC':'Texas A&M-Corpus Christi', 'Col Charlestn':'College of Charleston', 'Central Mich':'Central Michigan', 'S Mississippi':'Southern Miss',\
                             'Incar Word':'Incarnate Word', 'Jksnville State':'Jacksonville State', 'LA Tech':'Louisiana Tech', 'Middle Tenn':'Middle Tennessee', 'Maryland ES':'Maryland-Eastern Shore',\
                             'E Washingtn':'Eastern Washington', 'N Hampshire':'New Hampshire', 'CS Bakersfld':'Cal State Bakersfield', 'WI-Milwkee':'Milwaukee', 'Loyola-Chi':'Loyola (IL)',\
-                            'St Marys':"Saint Mary's", 'Fla Gulf Cst':'Florida Gulf Coast', 'TX-Arlington':'Texas-Arlington', 'NC-Wilmgton':'UNC Wilmington', 'AR Lit Rock':'Little Rock',\
+                            'St Marys':"Saint Mary's", 'Fla Gulf Cst':'Florida Gulf Coast',  'NC-Wilmgton':'UNC Wilmington', 'AR Lit Rock':'Little Rock',\
                             'Sam Hous State':'Sam Houston State', 'App State':'Appalachian State', 'E Carolina':'East Carolina', 'IPFW':'Purdue-Fort Wayne', 'TX-San Ant':'UTSA',\
                             'NW State':'Northwestern State', 'Mass Lowell':'UMass-Lowell', 'Wash State':'Washington State', 'Ark Pine Bl':'Arkansas-Pine Bluff',\
                             'Central Ark':'Central Arkansas', 'Northeastrn':'Northeastern', 'N Iowa':'Northern Iowa', 'GA Southern':'Georgia Southern', 'N Arizona':'Northern Arizona',\
@@ -77,11 +78,15 @@ class CbbDataLayer():
                             'USCUpstate':'USC Upstate', 'Tennessee-Martin':'UT-Martin', 'Central Connecticut State':'Central Connecticut', 'Illinois-Chicago':'UIC',\
                             'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
                             'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
-                            'Kansas City':'UMKC', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley', 'Bryant University':'Bryant', 'Charleston (WV)':'College of Charleston',\
-                            'Virginia Military':'VMI', 'American University':'American', 'Virginia Commonwealth':'VCU', 'Southern California':'USC', 'Louisiana State':'LSU'}
+                            'UMKC':'Kansas City', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley', 'Bryant University':'Bryant', 'Charleston (WV)':'College of Charleston',\
+                            'Virginia Military':'VMI', 'American University':'American', 'Virginia Commonwealth':'VCU', 'Southern California':'USC', 'Louisiana State':'LSU',\
+                            'St. Thomas': 'St. Thomas (MN)', 'St. Thomas':'St. Thomas (MN)', 'Queens':'Queens (NC)', 'TX-Arlington':'UT Arlington',\
+                            'Texas A&M Commerce':'Texas A&M-Commerce', 'TX A&M-Com':'Texas A&M-Commerce', 'Hsn Christian':'Houston Christian',\
+                            'Cal Baptist':'California Baptist'}
         self.massey_rating_historical_dates = {2020:'20200311', 2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
+
 
     def pull_teams_information(self):
         '''
@@ -125,7 +130,7 @@ class CbbDataLayer():
 
 
         #Pull Ken Pom data
-        ken_pom = self.pull_ken_pom_data()
+        ken_pom = self.pull_ken_pom_data_selenium()
         away_ken_pom = ken_pom.copy()
         home_ken_pom = ken_pom.copy()
 
@@ -149,6 +154,7 @@ class CbbDataLayer():
 
         ##Drop all rows with nans
         ##This is done so we can standardize the stats
+        print(data.loc[data.isna().any(axis=1), ['home_name', 'away_name']])
         data.dropna(inplace=True)
 
         ##Standardize the numeric data and update in terms of strengths of both teams
@@ -160,7 +166,7 @@ class CbbDataLayer():
         data = self.pull_schedule(start_date, end_date)
 
         ##Pull Ken Pom data
-        historical_ken_pom = self.pull_ken_pom_data()
+        historical_ken_pom = self.pull_ken_pom_data_selenium()
 
         away_ken_pom = historical_ken_pom.copy()
         home_ken_pom= historical_ken_pom.copy()
@@ -185,6 +191,7 @@ class CbbDataLayer():
 
         ##Drop all rows with nans
         ##This is done so we can standardize the stats
+        print(data.loc[data.isna().any(axis=1), ['home_name', 'away_name']])
         data.dropna(inplace=True)
 
         ##Standardize the numeric data and update in terms of strengths of both teams
@@ -192,7 +199,7 @@ class CbbDataLayer():
 
         ##Pull odds for the games
         ##Use reverse odds to ensure that neutral site games are included
-        odds = self.pull_current_odds(start_date, end_date)
+        odds = self.pull_daily_odds_team_rankings()
         reversed_odds = pd.DataFrame()
         reversed_odds['home_name'] = odds['away_name']
         reversed_odds['away_name'] = odds['home_name']
@@ -231,6 +238,7 @@ class CbbDataLayer():
                 team_schedule['neutral'] = np.where(team_schedule['location'] == 'Neutral', 1, 0)
                 team_schedule = team_schedule[(team_schedule['datetime'] >= start_date) & (team_schedule['datetime'] < end_date+pd.DateOffset(1))]
                 schedules.append(team_schedule[['date', 'team_abbr','boxscore_index', 'neutral', 'days_between_games']])
+                time.sleep(3.5)
             except:
                 ##In these cases, the team may be new to D1 and was not playing during the season we are pulling
                 ##Therefore, we skip this team and continue looping through other teams
@@ -339,7 +347,7 @@ class CbbDataLayer():
         historical_data['neutral'] = np.where(historical_data['neutral'] == 1, 1, 0)
 
         ##Pull Ken Pom data
-        historical_ken_pom = self.pull_ken_pom_data(year)
+        historical_ken_pom = self.pull_ken_pom_data_selenium(year)
 
         away_ken_pom = historical_ken_pom.copy()
         home_ken_pom= historical_ken_pom.copy()
@@ -364,6 +372,7 @@ class CbbDataLayer():
 
         ##Drop all rows with nans
         ##This is done so we can standardize the stats
+        print(historical_data.loc[historical_data.isna().any(axis=1), ['home_name', 'away_name']])
         historical_data.dropna(inplace=True)
 
         ##Standardize the numeric data and update in terms of strengths of both teams
@@ -460,14 +469,14 @@ class CbbDataLayer():
         These rankings are the average of the model rankings from online
         '''
 
-        ##Due to JavaScript, we need to use selenium to pull this data        
+        # Due to JavaScript, we need to use selenium to pull this data
         tries = 0
         run_loop = True
         while run_loop:
-            ##Wrap this in a try-except to keep trying until it works
-            ##Give up after 5 tries
+            # Wrap this in a try-except to keep trying until it works
+            # Give up after 5 tries
             try:
-                browser = webdriver.Chrome(executable_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'chromedriver'))        
+                browser = webdriver.Chrome(ChromeDriverManager().install())
                 if year is not None:
                     url = 'https://www.masseyratings.com/ranks?s=cb&dt=' + self.massey_rating_historical_dates[year]
                 else:
@@ -551,6 +560,68 @@ class CbbDataLayer():
         ##Normalize the data
         ken_pom_stats.iloc[:,1:] = ken_pom_stats.iloc[:,1:].apply(pd.to_numeric) 
         ken_pom_stats.iloc[:,1:] = (ken_pom_stats.iloc[:,1:] - np.mean(ken_pom_stats.iloc[:,1:], axis=0))/(np.std(ken_pom_stats.iloc[:,1:], axis=0))
+
+        return ken_pom_stats
+
+    def pull_ken_pom_data_selenium(self, year=None):
+        '''
+        Pull KenPom Data for the given year
+        '''
+        # Due to JavaScript, we need to use selenium to pull this data
+        tries = 0
+        run_loop = True
+        while run_loop:
+            # Wrap this in a try-except to keep trying until it works
+            # Give up after 5 tries
+            try:
+                browser = webdriver.Chrome(ChromeDriverManager().install())
+                ##Create the urls which we will use to webscrape
+                if year is not None:
+                    f_url = 'https://kenpom.com/index.php?y=' + str(year)
+                else:
+                    f_url = 'https://kenpom.com/'
+
+                browser.get(f_url)
+                time.sleep(15)
+                page_source = browser.page_source
+                soup = BeautifulSoup(page_source, 'lxml')
+
+                ##Find the table on the page
+                f_table = soup.find('table', id='ratings-table')
+                run_loop = False
+            except:
+                tries += 1
+                print('failed on try {}'.format(tries))
+                browser.quit()
+                if tries >= 5:
+                    sys.exit("Massey load failed")
+
+        ##Parse through the rows of the table to create the dataframe
+        f_table_rows = f_table.find_all('tr')
+        res = []
+        for tr in f_table_rows:
+            td = tr.find_all('td')
+            row = [tr.text.strip() for tr in td if tr.text.strip()]
+            if row:
+                res.append(row)
+
+        ken_pom_stats = pd.DataFrame(res)
+
+        ken_pom_stats = ken_pom_stats[[1, 5, 7, 9]]
+        ken_pom_stats.columns = ['name', 'ken_pom_offense', 'ken_pom_defense', 'tempo']
+        browser.quit()
+
+        ##Clean the data
+        ken_pom_stats['name'] = ken_pom_stats['name'].apply(lambda x: x.rstrip('0123456789 '))
+
+        ##Update the team names to match the base
+        ken_pom_stats['name'] = ken_pom_stats['name'].apply(lambda x: x.replace(' St.', ' State'))
+        ken_pom_stats['name'].replace(self.team_replace, inplace=True)
+
+        ##Normalize the data
+        ken_pom_stats.iloc[:, 1:] = ken_pom_stats.iloc[:, 1:].apply(pd.to_numeric)
+        ken_pom_stats.iloc[:, 1:] = (ken_pom_stats.iloc[:, 1:] - np.mean(ken_pom_stats.iloc[:, 1:], axis=0)) / (
+            np.std(ken_pom_stats.iloc[:, 1:], axis=0))
 
         return ken_pom_stats
 
@@ -1171,7 +1242,7 @@ class CbbDataLayer():
         '''
         Pull all odds for the given date from sportsbook review
         '''
-        url = 'https://classic.sportsbookreview.com/betting-odds/ncaa-basketball/?date=' + str(games_date.date()).replace('-','')
+        url = 'https://www.sportsbookreview.com/betting-odds/ncaa-basketball/' + str(games_date.date()).replace('-','')
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
         raw_data = requests.get(url, headers=headers)
         soup = BeautifulSoup(raw_data.text, 'html.parser')
@@ -1280,3 +1351,61 @@ class CbbDataLayer():
         cluster_dataframe['year'] = year
 
         return cluster_dataframe
+
+    def pull_daily_odds_team_rankings(self):
+        """
+        Pull and parse odds from teamrankings
+        """
+        url = 'https://www.teamrankings.com/ncb/'
+        url = requests.get(url).text
+        soup = BeautifulSoup(url, 'lxml')
+
+        table = soup.find_all('table', attrs={'class': 'tr-table'})[1]
+
+        ##Parse through the rows of the table to create the dataframe
+        table_rows = table.find_all('tr')
+        daily_odds = []
+        for tr in table_rows:
+            td = tr.find_all('td')[0]
+            text = td.text
+            if ' at ' in text:
+                elements = text.split(' at ')
+                if re.search('\(-\d+(?:\.\d)?\)', elements[0]):
+                    away = re.split('\(-\d+(?:\.\d)?\)', elements[0])[0].strip()
+                    odds = float(re.findall('-\d+(?:\.\d)?', elements[0])[0])
+                    home = elements[1].strip()
+                elif re.search('\(-\d+(?:\.\d)?\)', elements[1]):
+                    away = elements[0].strip()
+                    home = re.split('\(-\d+(?:\.\d)?\)', elements[1])[0].strip()
+                    odds = float(re.findall('-\d+(?:\.\d)?', elements[1])[0]) * -1
+                else:
+                    away = elements[0].strip()
+                    home = elements[1].strip()
+                    odds = np.NAN
+            else:
+                elements = text.split(' vs. ')
+                if re.search('\(-\d+(?:\.\d)?\)', elements[0]):
+                    away = re.split('\(-\d+(?:\.\d)?\)', elements[0])[0].strip()
+                    odds = float(re.findall('-\d+(?:\.\d)?', elements[0])[0])
+                    home = elements[1].strip()
+                elif re.search('\(-\d+(?:\.\d)?\)', elements[1]):
+                    away = elements[0].strip()
+                    home = re.split('\(-\d+(?:\.\d)?\)', elements[1])[0].strip()
+                    odds = float(re.findall('-\d+(?:\.\d)?', elements[1])[0]) * -1
+                else:
+                    away = elements[0].strip()
+                    home = elements[1].strip()
+                    odds = np.NAN
+            daily_odds.append({'away_name': away, 'home_name': home, 'spread': odds})
+
+        daily_odds = pd.DataFrame(daily_odds)
+        daily_odds.drop_duplicates(['away_name', 'home_name'], keep='first', inplace=True)
+        ##Update team names
+        ##Update the team names to match the base
+        daily_odds['away_name'] = daily_odds['away_name'].apply(
+            lambda x: x.replace(' St', ' State') if ' State' not in x else x)
+        daily_odds['away_name'].replace(self.team_replace, inplace=True)
+        daily_odds['home_name'] = daily_odds['home_name'].apply(
+            lambda x: x.replace(' St', ' State') if ' State' not in x else x)
+        daily_odds['home_name'].replace(self.team_replace, inplace=True)
+        return daily_odds

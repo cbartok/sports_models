@@ -45,6 +45,7 @@ results['difference'] = results['prediction'] - results['spread']
 results = results[results['date'] == todays_date.strftime('%b %#d')].drop_duplicates()
 results['difference'] = results['prediction'] - results['spread']
 results = results[['away_name', 'home_name', 'spread', 'prediction', 'difference']]
+results.sort_values(['away_name'], inplace=True)
 results.to_csv('cbb_predictions.csv', index=False)
 
 scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
