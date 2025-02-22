@@ -23,9 +23,19 @@ def create_ensemble_fit_table(model_list, features):
 
 ##Initialize the data layer
 cbb_data = cdl.CbbDataLayer()
-cbb_data.pull_teams_information()
-team_list = cbb_data.team_list
-
+#cbb_data.pull_teams_information()
+#team_list = cbb_data.team_list
+team_list = ["Alabama","Arizona","Arizona State","Arkansas","Auburn","Baylor","Boise State",\
+             "Colgate","College of Charleston","Creighton","Drake","Duke","Fairleigh Dickinson",\
+             "Florida Atlantic","Furman","Gonzaga","Grand Canyon","Houston","Howard","Illinois",\
+             "Indiana","Iona","Iowa","Iowa State","Kansas","Kansas State","Kennesaw State","Kent State",\
+             "Kentucky","Louisiana","Marquette","Maryland","Memphis","Miami (FL)","Michigan State",\
+             "Mississippi State","Missouri","Montana State","NC State","Nevada","Northern Kentucky","Northwestern",\
+             "Oral Roberts","Penn State","Pitt","Princeton","Providence","Purdue","Saint Mary's","San Diego State",\
+             "Southeast Missouri State","TCU","Tennessee","Texas","Texas A&M","Texas A&M-Corpus Christi","Texas Southern",\
+             "UCLA","UConn","UCSB","UNC Asheville","USC","Utah State","VCU","Vermont","Virginia","West Virginia", "Xavier",\
+             "Oklahoma State", "North Texas", "Oregon", "Wisconsin", "UAB", "Vanderbilt", "Cincinnati", "Utah Valley",\
+             "Southern Utah", "Eastern Kentucky", "Charlotte", "Radford"]
 def check_input(event):
     '''
     Allow users to search the combo box for specific teams

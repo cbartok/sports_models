@@ -80,9 +80,9 @@ class CbbDataLayer():
                             'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
                             'UMKC':'Kansas City', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley', 'Bryant University':'Bryant', 'Charleston (WV)':'College of Charleston',\
                             'Virginia Military':'VMI', 'American University':'American', 'Virginia Commonwealth':'VCU', 'Southern California':'USC', 'Louisiana State':'LSU',\
-                            'St. Thomas': 'St. Thomas (MN)', 'St. Thomas':'St. Thomas (MN)', 'Queens':'Queens (NC)', 'TX-Arlington':'UT Arlington',\
+                            'Queens':'Queens (NC)', 'TX-Arlington':'UT Arlington',\
                             'Texas A&M Commerce':'Texas A&M-Commerce', 'TX A&M-Com':'Texas A&M-Commerce', 'Hsn Christian':'Houston Christian',\
-                            'Cal Baptist':'California Baptist'}
+                            'Cal Baptist':'California Baptist', 'St. Thomas (MN)': 'St. Thomas'}
         self.massey_rating_historical_dates = {2020:'20200311', 2019:'20190408', 2018:'20180402', 2017:'20170403',\
                                            2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
                                            2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
@@ -96,7 +96,7 @@ class CbbDataLayer():
         ##If it fails, use the last year
         try:          
             teams = Teams()
-        except:
+        except Exception as e:
             teams = Teams(int(pd.to_datetime('now').year) -  1)
         self.all_team_data = teams.dataframes
         self.all_team_data['name'].replace(self.team_replace, inplace=True)
@@ -238,7 +238,6 @@ class CbbDataLayer():
                 team_schedule['neutral'] = np.where(team_schedule['location'] == 'Neutral', 1, 0)
                 team_schedule = team_schedule[(team_schedule['datetime'] >= start_date) & (team_schedule['datetime'] < end_date+pd.DateOffset(1))]
                 schedules.append(team_schedule[['date', 'team_abbr','boxscore_index', 'neutral', 'days_between_games']])
-                time.sleep(3.5)
             except:
                 ##In these cases, the team may be new to D1 and was not playing during the season we are pulling
                 ##Therefore, we skip this team and continue looping through other teams
