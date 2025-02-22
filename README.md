@@ -3,9 +3,11 @@ Repo containing code for models for various sports in python
 
 This model is built off of the sportsipy python package (https://github.com/roclark/sportsipy) and uses selenium and beautifulsoup to pull stats.
 
+Update: Due to sportsreference limiting API calls, the sportsipy package no longer functions. My goal is to rebuild these models using a new source for data.
+
 Sports:
 College Football (updated 9/2021),
-Nfl (completed 9/2019),
+NFL (completed 9/2019),
 College Basketball (updated 3/2022)
 
 Packages
