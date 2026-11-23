@@ -4,10 +4,6 @@
 
 /.ipynb_checkpoints/Nfl-checkpoint.ipynb
 /NFL/.ipynb_checkpoints/Nfl Exploratory-checkpoint.ipynb
-/NFL/nfl_model.pickle
-/NFL/nfl_full_model.pickle
-/College Football/cfb_model.pickle
-/College Football/cfb_full_model.pickle
 .ipynb_checkpoints
 Model.sln
 Model.pyproj.user
@@ -26,8 +22,6 @@ __pycache__
 /College Football/cfb_predictions.csv
 /NFL/nfl_predictions.csv
 /College Basketball/CBB Historical Odds
-/College Basketball/cbb_full_model.pickle
-/College Basketball/cbb_model.pickle
 /College Basketball/cbb_predictions.csv
 /College Basketball/CBB Exploratory.ipynb
 /College Basketball/.ipynb_checkpoints

@@ -1,1410 +1,1289 @@
-from sportsipy.ncaab.teams import Teams
-from sportsipy.ncaab.schedule import Schedule
-from sportsipy.ncaab.boxscore import Boxscore, Boxscores
-import pandas as pd
-import numpy as np
-from scipy import stats
-from datetime import datetime
-import requests
 import os
 import re
-import time
-import sys
-import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 
+import numpy as np
+import pandas as pd
+import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
 from sklearn.preprocessing import StandardScaler
 
 
-class CbbDataLayer():
-    '''
-    Class to hold all the functions that pull data for College Basketball
-    '''
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
 
-    def __init__(self):
-        self.team_replace = {'Missouri KC':'UMKC', 'CS Fullerton':'Cal State Fullerton', 'Gardner Webb':'Gardner-Webb', 'SC Upstate':'USC Upstate',\
-                            'TX Southern':'Texas Southern', 'Loyola MD':'Loyola (MD)', 'SIUE':'SIU-Edwardsville', 'F Dickinson':'Fairleigh Dickinson',\
-                            'Cent Arkansas':'Central Arkansas', 'American Univ':'American', 'Ark Pine Bluff':'Arkansas-Pine Bluff', 'Bowling Green':'Bowling Green State',\
-                            'UC Irvine':'UC-Irvine', 'UC Riverside':'UC-Riverside', 'Central Conn':'Central Connecticut', 'Charleston So':'Charleston Southern',\
-                            'E Kentucky':'Eastern Kentucky', 'FL Atlantic':'Florida Atlantic', 'Ga Southern':'Georgia Southern', 'North Carolina':'UNC', \
-                            'Miami FL':'Miami (FL)', 'Monmouth NJ':'Monmouth', 'S Dakota State':'South Dakota State', 'SE Louisiana':'Southeastern Louisiana',\
-                            'Connecticut':'UConn', 'N Kentucky':'Northern Kentucky', 'Florida Intl':'Florida International', 'NC A&T':'North Carolina A&T',\
-                            'Abilene Chr':'Abilene Christian', 'G Washington':'George Washington', 'SUNY Albany':'Albany (NY)',\
-                            'CS Northridge':'Cal State Northridge', 'Mississippi':'Ole Miss', 'Massachusetts':'UMass', 'SE Missouri State':'Southeast Missouri State',\
-                            'WKU':'Western Kentucky', "St John's":"St. John's (NY)", 'St Bonaventure':'St. Bonaventure', 'UTRGV':'Texas-Rio Grande Valley',\
-                            'IL Chicago':'UIC', 'Boston Univ':'Boston University', 'TAM C. Christi':'Texas A&M-Corpus Christi', 'Coastal Car':'Coastal Carolina',\
-                            'St Louis':'Saint Louis', 'Col Charleston':'College of Charleston', 'C Michigan':'Central Michigan', 'E Michigan':'Eastern Michigan',\
-                            'MTSU':'Middle Tennessee', 'MD E Shore':'Maryland-Eastern Shore', 'E Washington':'Eastern Washington', 'CS Bakersfield':'Cal State Bakersfield',\
-                            'WI Milwaukee':'Milwaukee', 'Loyola-Chicago':'Loyola (IL)', "St Mary's CA":"Saint Mary's", "Saint Mary's (CA)":"Saint Mary's", 'FL Gulf Coast':'Florida Gulf Coast', \
-                            'UC Santa Barbara':'UCSB', 'Ark Little Rock':'Little Rock', 'W Illinois':'Western Illinois', 'W Michigan':'Western Michigan', 'Kent':'Kent State',\
-                            'PFW':'Purdue-Fort Wayne', 'UT San Antonio':'UTSA', 'Northwestern LA':'Northwestern State', 'S Dakota St':'South Dakota State', 'MA Lowell':'UMass-Lowell',\
-                            'Pittsburgh':'Pitt', 'Houston Bap':'Houston Baptist', 'N Illinois':'Northern Illinois', 'CS Sacramento':'Sacramento State', 'Miami OH':'Miami (OH)',\
-                            'Loy Marymount':'Loyola Marymount', 'W Carolina':'Western Carolina', 'LIU Brooklyn':'LIU', 'TN Martin':'UT-Martin', 'SF Austin':'Stephen F. Austin',\
-                            'Kennesaw':'Kennesaw State', 'ULM':'Louisiana-Monroe', 'WI Green Bay':'Green Bay', 'NC Central':'North Carolina Central',\
-                            'St Francis NY':'St. Francis (NY)', 'St Francis PA':'Saint Francis (PA)', "St Peter's":"St. Peter's", 'S Carolina State':'South Carolina State',\
-                            'N Colorado':'Northern Colorado', "Mt State Mary's":"Mount St. Mary's", 'N Dakota State':'North Dakota State', 'Southern Univ':'Southern',\
-                            "St Joseph's PA":"St. Joseph's", 'NE Omaha':'Omaha', 'MS Valley State':'Mississippi Valley State', 'UC Davis':'UC-Davis', 'S Illinois':'Southern Illinois',\
-                            'E Illinois':'Eastern Illinois', 'North Carolina':'UNC', 'FIU':'Florida International', 'Albany':'Albany (NY)', 'Bethune Cookman':'Bethune-Cookman',\
-                            "St. John's":"St. John's (NY)", 'UT Rio Grande Valley':'Texas-Rio Grande Valley', 'Illinois Chicago':'UIC', 'Citadel':'The Citadel',\
-                            'Texas A&M Corpus Chris':'Texas A&M-Corpus Christi', 'Maryland Eastern Shore':'Maryland-Eastern Shore', 'N.C. State':'NC State',\
-                            'Loyola Chicago':'Loyola (IL)', 'Fort Wayne':'Purdue-Fort Wayne', 'UMass Lowell':'UMass-Lowell', 'Arkansas Pine Bluff':'Arkansas-Pine Bluff',\
-                            'Louisiana Lafayette':'Louisiana', 'Tennessee Martin':'UT-Martin', 'SIU Edwardsville':'SIU-Edwardsville', 'Louisiana Monroe':'Louisiana-Monroe',\
-                            "Mount State Mary's":"Mount St. Mary's", "Saint Joseph's":"St. Joseph's", "St. Francis PA":"Saint Francis (PA)", "St. Francis NY":"St. Francis (NY)",\
-                            "Saint Peter's":"St. Peter's", 'East Tennessee State':'ETSU', 'Prairie View A&M':'Prairie View', 'Nebraska Omaha':'Omaha', 'Grambling State':'Grambling',\
-                            'N Carolina':'UNC', 'Abl Christian':'Abilene Christian', 'W Virginia':'West Virginia', 'Miss State':'Mississippi State', 'James Mad':'James Madison',\
-                            'VA Tech':'Virginia Tech', 'N Mex State':'New Mexico State', 'Grd Canyon':'Grand Canyon', 'S Florida':'South Florida', 'Sacred Hrt':'Sacred Heart',\
-                            'Geo Wshgtn':'George Washington', 'Beth-Cook':'Bethune-Cookman', 'Geo Mason':'George Mason', 'Cal State Nrdge':'Cal State Northridge',\
-                            'San Fransco':'San Francisco', 'TX El Paso':'UTEP', 'TX Christian':'TCU', 'Boston Col':'Boston College', 'S Methodist':'SMU',\
-                            'U Mass':'UMass', 'Central FL':'UCF', 'TN Tech':'Tennessee Tech', 'SE Missouri':'Southeast Missouri State', 'W Kentucky':'Western Kentucky',\
-                            'St Johns':"St. John's (NY)", 'St Bonavent':'St. Bonaventure', 'TX-Pan Am':'Texas-Rio Grande Valley', 'IL-Chicago':'UIC', 'Boston U':'Boston University',\
-                            'TX A&M-CC':'Texas A&M-Corpus Christi', 'Col Charlestn':'College of Charleston', 'Central Mich':'Central Michigan', 'S Mississippi':'Southern Miss',\
-                            'Incar Word':'Incarnate Word', 'Jksnville State':'Jacksonville State', 'LA Tech':'Louisiana Tech', 'Middle Tenn':'Middle Tennessee', 'Maryland ES':'Maryland-Eastern Shore',\
-                            'E Washingtn':'Eastern Washington', 'N Hampshire':'New Hampshire', 'CS Bakersfld':'Cal State Bakersfield', 'WI-Milwkee':'Milwaukee', 'Loyola-Chi':'Loyola (IL)',\
-                            'St Marys':"Saint Mary's", 'Fla Gulf Cst':'Florida Gulf Coast',  'NC-Wilmgton':'UNC Wilmington', 'AR Lit Rock':'Little Rock',\
-                            'Sam Hous State':'Sam Houston State', 'App State':'Appalachian State', 'E Carolina':'East Carolina', 'IPFW':'Purdue-Fort Wayne', 'TX-San Ant':'UTSA',\
-                            'NW State':'Northwestern State', 'Mass Lowell':'UMass-Lowell', 'Wash State':'Washington State', 'Ark Pine Bl':'Arkansas-Pine Bluff',\
-                            'Central Ark':'Central Arkansas', 'Northeastrn':'Northeastern', 'N Iowa':'Northern Iowa', 'GA Southern':'Georgia Southern', 'N Arizona':'Northern Arizona',\
-                            'U Penn':'Penn', 'NC-Asheville':'UNC Asheville', 'S Alabama':'South Alabama', 'TN State':'Tennessee State', 'Bowling Grn':'Bowling Green State',\
-                            'S Carolina':'South Carolina', 'Youngs State':'Youngstown State', 'LA Lafayette':'Louisiana', 'Sac State':'Sacramento State', \
-                            'Lg Beach State':'Long Beach State', 'Loyola Mymt':'Loyola Marymount', 'Charl South':'Charleston Southern', 'Wm & Mary':'William & Mary',\
-                            'LIU-Brooklyn':'LIU', 'NC-Grnsboro':'UNC Greensboro', 'Ste F Austin':'Stephen F. Austin', 'SIU Edward':'SIU-Edwardsville', 'Maryland BC':'UMBC',\
-                            'Fla Atlantic':'Florida Atlantic', 'S Utah':'Southern Utah', 'LA Monroe':'Louisiana-Monroe', 'WI-Grn Bay':'Green Bay', 'St Fran (NY)':"St. Francis (NY)",\
-                            'St Fran (PA)':"Saint Francis (PA)", 'Utah Val State':'Utah Valley', 'Gard-Webb':'Gardner-Webb', 'N Florida':'North Florida', \
-                            'Loyola-MD':'Loyola (MD)', 'VA Military':'VMI', 'Mt State Marys':"Mount St. Mary's", 'GA Tech':'Georgia Tech', 'E Tenn State':'ETSU',\
-                            'Rob Morris':'Robert Morris', 'Neb Omaha':'Omaha', 'St Josephs':"St. Joseph's", 'St Peters':"St. Peter's", 'S Car State':'South Carolina State',\
-                            'Alab A&M':'Alabama A&M', 'Miss Val State':'Mississippi Valley State', 'CSFullerton':'Cal State Fullerton', 'Miami Florida':'Miami (FL)',\
-                            'USCUpstate':'USC Upstate', 'Tennessee-Martin':'UT-Martin', 'Central Connecticut State':'Central Connecticut', 'Illinois-Chicago':'UIC',\
-                            'Louisiana-Lafayette':'Louisiana', 'Texas A&M-CC':'Texas A&M-Corpus Christi', 'North Carolina State':'NC State', 'Arkansas-Little Rock':'Little Rock',\
-                            'Detroit Mercy':'Detroit', 'Prairie View A&M':'Prairie View', "Saint Joseph's (PA)":"St. Joseph's", 'Purdue Fort Wayne':'Purdue-Fort Wayne', 'Charleston':'College of Charleston',\
-                            'UMKC':'Kansas City', 'Nebraska-Omaha':'Omaha', 'Texas Rio Grande Valley':'Texas-Rio Grande Valley', 'Bryant University':'Bryant', 'Charleston (WV)':'College of Charleston',\
-                            'Virginia Military':'VMI', 'American University':'American', 'Virginia Commonwealth':'VCU', 'Southern California':'USC', 'Louisiana State':'LSU',\
-                            'Queens':'Queens (NC)', 'TX-Arlington':'UT Arlington',\
-                            'Texas A&M Commerce':'Texas A&M-Commerce', 'TX A&M-Com':'Texas A&M-Commerce', 'Hsn Christian':'Houston Christian',\
-                            'Cal Baptist':'California Baptist', 'St. Thomas (MN)': 'St. Thomas'}
-        self.massey_rating_historical_dates = {2020:'20200311', 2019:'20190408', 2018:'20180402', 2017:'20170403',\
-                                           2016:'20160404', 2015:'20150406', 2014:'20140407', 2013:'20130408', 2012:'20120402',
-                                           2011:'20110404', 2010:'20100405', 2009:'20090406', 2008:'20080407'}
+ESPN_BASE_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball"
+)
+CBBD_BASE_URL = "https://api.collegebasketballdata.com"
+ODDS_API_BASE_URL = "https://api.the-odds-api.com/v4"
 
+
+def _cbb_season_for_date(dt):
+    """Return the NCAA season year (ending year) for a given date.
+    e.g., Nov 2026 -> 2027 season; Feb 2026 -> 2026 season.
+    """
+    dt = pd.to_datetime(dt)
+    return dt.year + 1 if dt.month >= 7 else dt.year
+
+
+def _format_short_date(dt):
+    """Cross-platform 'Nov 4' style date string (avoids Windows-only '%#d')."""
+    dt = pd.to_datetime(dt)
+    return f"{dt.strftime('%b')} {dt.day}"
+
+
+class CbbDataLayer:
+    """
+    Data layer for College Basketball modeling.
+
+    Replaces the deprecated/throttled sportsipy (Sports Reference) and Selenium
+    scrapers with direct JSON APIs and concurrent HTTP fetching:
+      - Schedules, teams, neutral-site flags, and days of rest:
+          ESPN Public JSON API (no API key required) or CollegeBasketballData (CBBD) API
+      - Current betting spreads:
+          The Odds API (optional key), CBBD /lines (optional free key),
+          or ESPN Scoreboard API (no API key required)
+      - Historical betting spreads:
+          CBBD /lines (free API key) or The Odds API historical endpoint (paid tier)
+      - KenPom efficiency & tempo:
+          Direct HTTP session (no Selenium) or KenPom Official API (subscriber key)
+      - TeamRankings stats:
+          Concurrent ThreadPoolExecutor fetching via a shared requests.Session
+    """
+
+    def __init__(
+        self,
+        cbbd_api_key=None,
+        odds_api_key=None,
+        kenpom_api_key=None,
+        max_workers=10,
+    ):
+        self.cbbd_api_key = cbbd_api_key or os.getenv("CBBD_API_KEY")
+        self.odds_api_key = odds_api_key or os.getenv("THE_ODDS_API_KEY")
+        self.kenpom_api_key = kenpom_api_key or os.getenv("KENPOM_API_KEY")
+        self.max_workers = max_workers
+
+        self.session = requests.Session()
+        self.session.headers.update(DEFAULT_HEADERS)
+
+        self.team_replace = {
+            "Missouri KC": "UMKC",
+            "CS Fullerton": "Cal State Fullerton",
+            "Gardner Webb": "Gardner-Webb",
+            "SC Upstate": "USC Upstate",
+            "TX Southern": "Texas Southern",
+            "Loyola MD": "Loyola (MD)",
+            "Loyola Maryland": "Loyola (MD)",
+            "SIUE": "SIU-Edwardsville",
+            "F Dickinson": "Fairleigh Dickinson",
+            "Cent Arkansas": "Central Arkansas",
+            "American Univ": "American",
+            "Ark Pine Bluff": "Arkansas-Pine Bluff",
+            "Bowling Green": "Bowling Green State",
+            "UC Irvine": "UC-Irvine",
+            "UC Riverside": "UC-Riverside",
+            "UC San Diego": "UC-San Diego",
+            "Central Conn": "Central Connecticut",
+            "Charleston So": "Charleston Southern",
+            "E Kentucky": "Eastern Kentucky",
+            "FL Atlantic": "Florida Atlantic",
+            "Ga Southern": "Georgia Southern",
+            "North Carolina": "UNC",
+            "Miami FL": "Miami (FL)",
+            "Miami": "Miami (FL)",
+            "Monmouth NJ": "Monmouth",
+            "S Dakota State": "South Dakota State",
+            "SE Louisiana": "Southeastern Louisiana",
+            "Connecticut": "UConn",
+            "N Kentucky": "Northern Kentucky",
+            "Florida Intl": "Florida International",
+            "NC A&T": "North Carolina A&T",
+            "Abilene Chr": "Abilene Christian",
+            "G Washington": "George Washington",
+            "SUNY Albany": "Albany (NY)",
+            "UAlbany": "Albany (NY)",
+            "CS Northridge": "Cal State Northridge",
+            "Mississippi": "Ole Miss",
+            "Massachusetts": "UMass",
+            "SE Missouri State": "Southeast Missouri State",
+            "WKU": "Western Kentucky",
+            "St John's": "St. John's (NY)",
+            "St Bonaventure": "St. Bonaventure",
+            "UTRGV": "Texas-Rio Grande Valley",
+            "IL Chicago": "UIC",
+            "Boston Univ": "Boston University",
+            "TAM C. Christi": "Texas A&M-Corpus Christi",
+            "Coastal Car": "Coastal Carolina",
+            "St Louis": "Saint Louis",
+            "Col Charleston": "College of Charleston",
+            "C Michigan": "Central Michigan",
+            "E Michigan": "Eastern Michigan",
+            "MTSU": "Middle Tennessee",
+            "MD E Shore": "Maryland-Eastern Shore",
+            "E Washington": "Eastern Washington",
+            "CS Bakersfield": "Cal State Bakersfield",
+            "WI Milwaukee": "Milwaukee",
+            "Loyola-Chicago": "Loyola (IL)",
+            "St Mary's CA": "Saint Mary's",
+            "Saint Mary's (CA)": "Saint Mary's",
+            "FL Gulf Coast": "Florida Gulf Coast",
+            "UC Santa Barbara": "UCSB",
+            "Ark Little Rock": "Little Rock",
+            "W Illinois": "Western Illinois",
+            "W Michigan": "Western Michigan",
+            "Kent": "Kent State",
+            "PFW": "Purdue-Fort Wayne",
+            "UT San Antonio": "UTSA",
+            "Northwestern LA": "Northwestern State",
+            "S Dakota St": "South Dakota State",
+            "MA Lowell": "UMass-Lowell",
+            "Pittsburgh": "Pitt",
+            "Houston Bap": "Houston Baptist",
+            "N Illinois": "Northern Illinois",
+            "CS Sacramento": "Sacramento State",
+            "Miami OH": "Miami (OH)",
+            "Loy Marymount": "Loyola Marymount",
+            "W Carolina": "Western Carolina",
+            "LIU Brooklyn": "LIU",
+            "Long Island University": "LIU",
+            "TN Martin": "UT-Martin",
+            "UT Martin": "UT-Martin",
+            "SF Austin": "Stephen F. Austin",
+            "Kennesaw": "Kennesaw State",
+            "ULM": "Louisiana-Monroe",
+            "WI Green Bay": "Green Bay",
+            "NC Central": "North Carolina Central",
+            "St Francis NY": "St. Francis (NY)",
+            "St Francis PA": "Saint Francis (PA)",
+            "St Peter's": "St. Peter's",
+            "S Carolina State": "South Carolina State",
+            "N Colorado": "Northern Colorado",
+            "Mt State Mary's": "Mount St. Mary's",
+            "N Dakota State": "North Dakota State",
+            "Southern Univ": "Southern",
+            "St Joseph's PA": "St. Joseph's",
+            "NE Omaha": "Omaha",
+            "MS Valley State": "Mississippi Valley State",
+            "UC Davis": "UC-Davis",
+            "S Illinois": "Southern Illinois",
+            "E Illinois": "Eastern Illinois",
+            "FIU": "Florida International",
+            "Albany": "Albany (NY)",
+            "Bethune Cookman": "Bethune-Cookman",
+            "St. John's": "St. John's (NY)",
+            "UT Rio Grande Valley": "Texas-Rio Grande Valley",
+            "Illinois Chicago": "UIC",
+            "Citadel": "The Citadel",
+            "Texas A&M Corpus Chris": "Texas A&M-Corpus Christi",
+            "Texas A&M-Corpus Christi": "Texas A&M-Corpus Christi",
+            "Maryland Eastern Shore": "Maryland-Eastern Shore",
+            "N.C. State": "NC State",
+            "Loyola Chicago": "Loyola (IL)",
+            "Fort Wayne": "Purdue-Fort Wayne",
+            "UMass Lowell": "UMass-Lowell",
+            "Arkansas Pine Bluff": "Arkansas-Pine Bluff",
+            "Louisiana Lafayette": "Louisiana",
+            "Tennessee Martin": "UT-Martin",
+            "SIU Edwardsville": "SIU-Edwardsville",
+            "Louisiana Monroe": "Louisiana-Monroe",
+            "Mount State Mary's": "Mount St. Mary's",
+            "Saint Joseph's": "St. Joseph's",
+            "St. Francis PA": "Saint Francis (PA)",
+            "St. Francis NY": "St. Francis (NY)",
+            "Saint Peter's": "St. Peter's",
+            "East Tennessee State": "ETSU",
+            "Prairie View A&M": "Prairie View",
+            "Nebraska Omaha": "Omaha",
+            "Grambling State": "Grambling",
+            "N Carolina": "UNC",
+            "Abl Christian": "Abilene Christian",
+            "W Virginia": "West Virginia",
+            "Miss State": "Mississippi State",
+            "James Mad": "James Madison",
+            "VA Tech": "Virginia Tech",
+            "N Mex State": "New Mexico State",
+            "Grd Canyon": "Grand Canyon",
+            "S Florida": "South Florida",
+            "Sacred Hrt": "Sacred Heart",
+            "Geo Wshgtn": "George Washington",
+            "Beth-Cook": "Bethune-Cookman",
+            "Geo Mason": "George Mason",
+            "Cal State Nrdge": "Cal State Northridge",
+            "San Fransco": "San Francisco",
+            "TX El Paso": "UTEP",
+            "TX Christian": "TCU",
+            "Boston Col": "Boston College",
+            "S Methodist": "SMU",
+            "U Mass": "UMass",
+            "Central FL": "UCF",
+            "TN Tech": "Tennessee Tech",
+            "SE Missouri": "Southeast Missouri State",
+            "W Kentucky": "Western Kentucky",
+            "St Johns": "St. John's (NY)",
+            "St Bonavent": "St. Bonaventure",
+            "TX-Pan Am": "Texas-Rio Grande Valley",
+            "IL-Chicago": "UIC",
+            "Boston U": "Boston University",
+            "TX A&M-CC": "Texas A&M-Corpus Christi",
+            "Col Charlestn": "College of Charleston",
+            "Central Mich": "Central Michigan",
+            "S Mississippi": "Southern Miss",
+            "Incar Word": "Incarnate Word",
+            "Jksnville State": "Jacksonville State",
+            "LA Tech": "Louisiana Tech",
+            "Middle Tenn": "Middle Tennessee",
+            "Maryland ES": "Maryland-Eastern Shore",
+            "E Washingtn": "Eastern Washington",
+            "N Hampshire": "New Hampshire",
+            "CS Bakersfld": "Cal State Bakersfield",
+            "WI-Milwkee": "Milwaukee",
+            "Loyola-Chi": "Loyola (IL)",
+            "St Marys": "Saint Mary's",
+            "Fla Gulf Cst": "Florida Gulf Coast",
+            "NC-Wilmgton": "UNC Wilmington",
+            "AR Lit Rock": "Little Rock",
+            "Sam Hous State": "Sam Houston State",
+            "Sam Houston": "Sam Houston State",
+            "App State": "Appalachian State",
+            "E Carolina": "East Carolina",
+            "IPFW": "Purdue-Fort Wayne",
+            "TX-San Ant": "UTSA",
+            "NW State": "Northwestern State",
+            "Mass Lowell": "UMass-Lowell",
+            "Wash State": "Washington State",
+            "Ark Pine Bl": "Arkansas-Pine Bluff",
+            "Central Ark": "Central Arkansas",
+            "Northeastrn": "Northeastern",
+            "N Iowa": "Northern Iowa",
+            "GA Southern": "Georgia Southern",
+            "N Arizona": "Northern Arizona",
+            "U Penn": "Penn",
+            "Pennsylvania": "Penn",
+            "NC-Asheville": "UNC Asheville",
+            "S Alabama": "South Alabama",
+            "TN State": "Tennessee State",
+            "Bowling Grn": "Bowling Green State",
+            "S Carolina": "South Carolina",
+            "Youngs State": "Youngstown State",
+            "LA Lafayette": "Louisiana",
+            "Sac State": "Sacramento State",
+            "Lg Beach State": "Long Beach State",
+            "Loyola Mymt": "Loyola Marymount",
+            "Charl South": "Charleston Southern",
+            "Wm & Mary": "William & Mary",
+            "LIU-Brooklyn": "LIU",
+            "NC-Grnsboro": "UNC Greensboro",
+            "Ste F Austin": "Stephen F. Austin",
+            "SIU Edward": "SIU-Edwardsville",
+            "Maryland BC": "UMBC",
+            "Fla Atlantic": "Florida Atlantic",
+            "S Utah": "Southern Utah",
+            "LA Monroe": "Louisiana-Monroe",
+            "WI-Grn Bay": "Green Bay",
+            "St Fran (NY)": "St. Francis (NY)",
+            "St Fran (PA)": "Saint Francis (PA)",
+            "Utah Val State": "Utah Valley",
+            "Gard-Webb": "Gardner-Webb",
+            "N Florida": "North Florida",
+            "Loyola-MD": "Loyola (MD)",
+            "VA Military": "VMI",
+            "Mt State Marys": "Mount St. Mary's",
+            "GA Tech": "Georgia Tech",
+            "E Tenn State": "ETSU",
+            "Rob Morris": "Robert Morris",
+            "Neb Omaha": "Omaha",
+            "St Josephs": "St. Joseph's",
+            "St Peters": "St. Peter's",
+            "S Car State": "South Carolina State",
+            "Alab A&M": "Alabama A&M",
+            "Miss Val State": "Mississippi Valley State",
+            "CSFullerton": "Cal State Fullerton",
+            "Miami Florida": "Miami (FL)",
+            "USCUpstate": "USC Upstate",
+            "Tennessee-Martin": "UT-Martin",
+            "Central Connecticut State": "Central Connecticut",
+            "Illinois-Chicago": "UIC",
+            "Louisiana-Lafayette": "Louisiana",
+            "Texas A&M-CC": "Texas A&M-Corpus Christi",
+            "North Carolina State": "NC State",
+            "Arkansas-Little Rock": "Little Rock",
+            "Detroit Mercy": "Detroit",
+            "Saint Joseph's (PA)": "St. Joseph's",
+            "Purdue Fort Wayne": "Purdue-Fort Wayne",
+            "Charleston": "College of Charleston",
+            "UMKC": "Kansas City",
+            "Nebraska-Omaha": "Omaha",
+            "Texas Rio Grande Valley": "Texas-Rio Grande Valley",
+            "Bryant University": "Bryant",
+            "Charleston (WV)": "College of Charleston",
+            "Virginia Military": "VMI",
+            "American University": "American",
+            "Virginia Commonwealth": "VCU",
+            "Southern California": "USC",
+            "Louisiana State": "LSU",
+            "Queens": "Queens (NC)",
+            "Queens University": "Queens (NC)",
+            "TX-Arlington": "UT Arlington",
+            "Texas A&M Commerce": "Texas A&M-Commerce",
+            "TX A&M-Com": "Texas A&M-Commerce",
+            "East Texas A&M": "Texas A&M-Commerce",
+            "Hsn Christian": "Houston Christian",
+            "Cal Baptist": "California Baptist",
+            "St. Thomas (MN)": "St. Thomas",
+            "St. Thomas-Minnesota": "St. Thomas",
+            "Hawai'i": "Hawaii",
+            "San José State": "San Jose State",
+            "McNeese": "McNeese State",
+            "Nicholls": "Nicholls State",
+            "SE Missouri St": "Southeast Missouri State",
+            "Alcorn": "Alcorn State",
+            "Grambling": "Grambling",
+            "Seattle U": "Seattle",
+            "IU Indy": "IUPUI",
+            "IU Indianapolis": "IUPUI",
+            "South Carolina Upstate": "USC Upstate",
+            "UL Monroe": "Louisiana-Monroe",
+            "CSUN": "Cal State Northridge",
+            "Cal St. Bakersfield": "Cal State Bakersfield",
+            "Cal St. Fullerton": "Cal State Fullerton",
+            "Southeast Missouri": "Southeast Missouri State",
+            "AR-Pine Bluff": "Arkansas-Pine Bluff",
+            "Bethune": "Bethune-Cookman",
+            "C Arkansas": "Central Arkansas",
+            "C Connecticut": "Central Connecticut",
+            "E Tennessee State": "ETSU",
+            "E Texas A&M": "Texas A&M-Commerce",
+            "FGCU": "Florida Gulf Coast",
+            "Georgia So": "Georgia Southern",
+            "Hou Christian": "Houston Christian",
+            "J Madison": "James Madison",
+            "Loyola Chi": "Loyola (IL)",
+            "Miss Valley State": "Mississippi Valley State",
+            "Mt St Mary's": "Mount St. Mary's",
+            "N Alabama": "North Alabama",
+            "N Texas": "North Texas",
+            "NC Asheville": "UNC Asheville",
+            "NC Greensboro": "UNC Greensboro",
+            "NC Wilmington": "UNC Wilmington",
+            "Purdue FW": "Purdue-Fort Wayne",
+            "S Indiana": "Southern Indiana",
+            "St Thomas": "St. Thomas",
+            "Tenn Tech": "Tennessee Tech",
+            "Texas So": "Texas Southern",
+            "UCSD": "UC-San Diego",
+            "UT Rio Grande": "Texas-Rio Grande Valley",
+            "W Florida": "West Florida",
+            "W Georgia": "West Georgia",
+        }
+
+    def normalize_team_name(self, series):
+        s = series.astype(str).str.strip()
+        s = s.str.replace(r"\bSt\.?$", "State", regex=True)
+        return s.replace(self.team_replace)
 
     def pull_teams_information(self):
-        '''
-        Pulls all team for this year
-        '''
-        ##Try to pull the latest team data
-        ##If it fails, use the last year
-        try:          
-            teams = Teams()
-        except Exception as e:
-            teams = Teams(int(pd.to_datetime('now').year) -  1)
-        self.all_team_data = teams.dataframes
-        self.all_team_data['name'].replace(self.team_replace, inplace=True)
-        self.team_list = list(self.all_team_data['name'].unique())
-        self.team_abbreviations = list(self.all_team_data['abbreviation'].unique())
+        resp = self.session.get(
+            f"{ESPN_BASE_URL}/teams", params={"limit": 500}, timeout=15
+        )
+        resp.raise_for_status()
+        raw_teams = resp.json()["sports"][0]["leagues"][0]["teams"]
 
-    def pull_historical_team_info(self, year):
-        '''
-        Pulls all team stats for a given year
-        '''
-        teams = Teams(year)
-        return teams.dataframes
+        rows = []
+        for entry in raw_teams:
+            t = entry["team"]
+            rows.append(
+                {
+                    "team_id": str(t["id"]),
+                    "name": t.get("location") or t.get("displayName"),
+                    "display_name": t.get("displayName"),
+                    "abbreviation": t.get("abbreviation", "").lower(),
+                }
+            )
+
+        self.all_team_data = pd.DataFrame(rows)
+        self.all_team_data["name"] = self.normalize_team_name(
+            self.all_team_data["name"]
+        )
+        self.team_list = list(self.all_team_data["name"].unique())
+        self.team_abbreviations = list(self.all_team_data["abbreviation"].unique())
+        return self.all_team_data
+
+    def _fetch_espn_scoreboard_day(self, day_dt):
+        date_str = pd.to_datetime(day_dt).strftime("%Y%m%d")
+        resp = self.session.get(
+            f"{ESPN_BASE_URL}/scoreboard",
+            params={"dates": date_str, "groups": "50", "limit": 500},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        events = resp.json().get("events", [])
+
+        games = []
+        for ev in events:
+            comp = ev["competitions"][0]
+            competitors = {c["homeAway"]: c for c in comp.get("competitors", [])}
+            if "home" not in competitors or "away" not in competitors:
+                continue
+
+            home = competitors["home"]
+            away = competitors["away"]
+            game_dt = pd.to_datetime(ev["date"], utc=True).tz_convert("US/Eastern")
+            completed = comp.get("status", {}).get("type", {}).get("completed", False)
+
+            spread = np.nan
+            odds_list = comp.get("odds") or []
+            if odds_list and odds_list[0].get("spread") is not None:
+                try:
+                    spread = -float(odds_list[0]["spread"])
+                except (TypeError, ValueError):
+                    spread = np.nan
+
+            games.append(
+                {
+                    "game_id": str(ev["id"]),
+                    "datetime": game_dt.tz_localize(None),
+                    "date": _format_short_date(game_dt),
+                    "completed": completed,
+                    "neutral": int(bool(comp.get("neutralSite", False))),
+                    "away_id": str(away["team"]["id"]),
+                    "away_abbr": away["team"].get("abbreviation", "").lower(),
+                    "away_name": away["team"].get("location")
+                    or away["team"].get("displayName"),
+                    "away_score": pd.to_numeric(away.get("score"), errors="coerce")
+                    if completed
+                    else np.nan,
+                    "home_id": str(home["team"]["id"]),
+                    "home_abbr": home["team"].get("abbreviation", "").lower(),
+                    "home_name": home["team"].get("location")
+                    or home["team"].get("displayName"),
+                    "home_score": pd.to_numeric(home.get("score"), errors="coerce")
+                    if completed
+                    else np.nan,
+                    "espn_spread": spread,
+                }
+            )
+        return games
+
+    def _fetch_espn_team_schedule_dates(self, team_id, season):
+        resp = self.session.get(
+            f"{ESPN_BASE_URL}/teams/{team_id}/schedule",
+            params={"season": season},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        events = resp.json().get("events", [])
+        rows = []
+        for ev in events:
+            game_dt = pd.to_datetime(ev["date"], utc=True).tz_convert("US/Eastern")
+            rows.append(
+                {
+                    "team_id": str(team_id),
+                    "game_id": str(ev["id"]),
+                    "game_day": game_dt.tz_localize(None).normalize(),
+                }
+            )
+        if not rows:
+            return pd.DataFrame(columns=["team_id", "game_id", "days_between_games"])
+        df = pd.DataFrame(rows).sort_values("game_day").drop_duplicates("game_id")
+        df["days_between_games"] = df["game_day"].diff().dt.days
+        return df[["team_id", "game_id", "days_between_games"]]
+
+    @staticmethod
+    def _compute_rest_from_season_games(games_df):
+        df = games_df.copy()
+        df["game_day"] = pd.to_datetime(df["datetime"]).dt.normalize()
+
+        away_appearances = df[["game_id", "game_day", "away_name"]].rename(
+            columns={"away_name": "team"}
+        )
+        home_appearances = df[["game_id", "game_day", "home_name"]].rename(
+            columns={"home_name": "team"}
+        )
+        appearances = (
+            pd.concat([away_appearances, home_appearances], ignore_index=True)
+            .sort_values(["team", "game_day", "game_id"])
+            .drop_duplicates(["team", "game_id"])
+        )
+        appearances["off_days"] = appearances.groupby("team")["game_day"].diff().dt.days
+
+        df = df.merge(
+            appearances[["game_id", "team", "off_days"]].rename(
+                columns={"team": "away_name", "off_days": "away_off_days"}
+            ),
+            on=["game_id", "away_name"],
+            how="left",
+        )
+        df = df.merge(
+            appearances[["game_id", "team", "off_days"]].rename(
+                columns={"team": "home_name", "off_days": "home_off_days"}
+            ),
+            on=["game_id", "home_name"],
+            how="left",
+        )
+
+        df["away_short_rest"] = np.where(df["away_off_days"] == 1, 1, 0)
+        df["away_long_rest"] = np.where(df["away_off_days"] > 6, 1, 0)
+        df["home_short_rest"] = np.where(df["home_off_days"] == 1, 1, 0)
+        df["home_long_rest"] = np.where(df["home_off_days"] > 6, 1, 0)
+        return df
+
+    def pull_schedule(self, start_date, end_date, include_completed=False):
+        start_dt = pd.to_datetime(start_date).normalize()
+        end_dt = pd.to_datetime(end_date).normalize()
+        days = pd.date_range(start_dt, end_dt, freq="D")
+
+        all_games = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+            futures = [pool.submit(self._fetch_espn_scoreboard_day, d) for d in days]
+            for f in as_completed(futures):
+                all_games.extend(f.result())
+
+        if not all_games:
+            return pd.DataFrame(
+                columns=[
+                    "away_abbr",
+                    "away_name",
+                    "home_abbr",
+                    "home_name",
+                    "date",
+                    "neutral",
+                    "away_short_rest",
+                    "away_long_rest",
+                    "home_short_rest",
+                    "home_long_rest",
+                ]
+            )
+
+        full_schedule = pd.DataFrame(all_games).drop_duplicates("game_id")
+        full_schedule = full_schedule[
+            full_schedule["away_id"] != full_schedule["home_id"]
+        ]
+        if not include_completed:
+            full_schedule = full_schedule[~full_schedule["completed"]]
+
+        if full_schedule.empty:
+            return full_schedule
+
+        season = _cbb_season_for_date(start_dt)
+        team_ids = list(
+            set(full_schedule["away_id"]).union(set(full_schedule["home_id"]))
+        )
+        rest_frames = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+            futures = {
+                pool.submit(self._fetch_espn_team_schedule_dates, tid, season): tid
+                for tid in team_ids
+            }
+            for f in as_completed(futures):
+                try:
+                    rest_frames.append(f.result())
+                except Exception:
+                    continue
+
+        if rest_frames:
+            rest_df = pd.concat(rest_frames, ignore_index=True)
+            full_schedule = full_schedule.merge(
+                rest_df.rename(
+                    columns={
+                        "team_id": "away_id",
+                        "days_between_games": "away_off_days",
+                    }
+                ),
+                on=["away_id", "game_id"],
+                how="left",
+            )
+            full_schedule = full_schedule.merge(
+                rest_df.rename(
+                    columns={
+                        "team_id": "home_id",
+                        "days_between_games": "home_off_days",
+                    }
+                ),
+                on=["home_id", "game_id"],
+                how="left",
+            )
+        else:
+            full_schedule["away_off_days"] = np.nan
+            full_schedule["home_off_days"] = np.nan
+
+        full_schedule["away_short_rest"] = np.where(
+            full_schedule["away_off_days"] == 1, 1, 0
+        )
+        full_schedule["away_long_rest"] = np.where(
+            full_schedule["away_off_days"] > 6, 1, 0
+        )
+        full_schedule["home_short_rest"] = np.where(
+            full_schedule["home_off_days"] == 1, 1, 0
+        )
+        full_schedule["home_long_rest"] = np.where(
+            full_schedule["home_off_days"] > 6, 1, 0
+        )
+
+        full_schedule["away_name"] = self.normalize_team_name(
+            full_schedule["away_name"]
+        )
+        full_schedule["home_name"] = self.normalize_team_name(
+            full_schedule["home_name"]
+        )
+
+        return full_schedule[
+            [
+                "away_abbr",
+                "away_name",
+                "home_abbr",
+                "home_name",
+                "date",
+                "neutral",
+                "away_short_rest",
+                "away_long_rest",
+                "home_short_rest",
+                "home_long_rest",
+            ]
+        ].reset_index(drop=True)
+
+    def pull_historical_schedule_cbbd(self, year):
+        if not self.cbbd_api_key:
+            raise ValueError(
+                "CBBD_API_KEY is required for pull_historical_schedule_cbbd()."
+            )
+
+        resp = self.session.get(
+            f"{CBBD_BASE_URL}/games",
+            headers={"Authorization": f"Bearer {self.cbbd_api_key}"},
+            params={"season": year},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        raw = resp.json()
+
+        rows = []
+        for g in raw:
+            if g.get("homePoints") is None or g.get("awayPoints") is None:
+                continue
+            dt = pd.to_datetime(g["startDate"], utc=True).tz_convert("US/Eastern")
+            rows.append(
+                {
+                    "game_id": str(g["id"]),
+                    "datetime": dt.tz_localize(None),
+                    "date": _format_short_date(dt),
+                    "year": year,
+                    "neutral": int(bool(g.get("neutralSite", False))),
+                    "away_abbr": (g.get("awayTeam") or "").lower().replace(" ", "-"),
+                    "away_name": g.get("awayTeam"),
+                    "away_score": g.get("awayPoints"),
+                    "home_abbr": (g.get("homeTeam") or "").lower().replace(" ", "-"),
+                    "home_name": g.get("homeTeam"),
+                    "home_score": g.get("homePoints"),
+                }
+            )
+
+        df = pd.DataFrame(rows).drop_duplicates("game_id")
+        df["away_name"] = self.normalize_team_name(df["away_name"])
+        df["home_name"] = self.normalize_team_name(df["home_name"])
+        df = self._compute_rest_from_season_games(df)
+
+        return df[
+            [
+                "away_abbr",
+                "away_name",
+                "away_score",
+                "home_abbr",
+                "home_name",
+                "home_score",
+                "date",
+                "year",
+                "neutral",
+                "away_short_rest",
+                "away_long_rest",
+                "home_short_rest",
+                "home_long_rest",
+            ]
+        ].reset_index(drop=True)
+
+    def pull_historical_schedule(self, year):
+        if self.cbbd_api_key:
+            return self.pull_historical_schedule_cbbd(year)
+
+        days = pd.date_range(datetime(year - 1, 11, 1), datetime(year, 4, 15), freq="D")
+        all_games = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+            futures = [pool.submit(self._fetch_espn_scoreboard_day, d) for d in days]
+            for f in as_completed(futures):
+                try:
+                    all_games.extend(f.result())
+                except Exception:
+                    continue
+
+        df = pd.DataFrame(all_games).drop_duplicates("game_id")
+        df = df[df["completed"] & (df["away_id"] != df["home_id"])].copy()
+        df["year"] = year
+        df["away_name"] = self.normalize_team_name(df["away_name"])
+        df["home_name"] = self.normalize_team_name(df["home_name"])
+        df = self._compute_rest_from_season_games(df)
+
+        return df[
+            [
+                "away_abbr",
+                "away_name",
+                "away_score",
+                "home_abbr",
+                "home_name",
+                "home_score",
+                "date",
+                "year",
+                "neutral",
+                "away_short_rest",
+                "away_long_rest",
+                "home_short_rest",
+                "home_long_rest",
+            ]
+        ].reset_index(drop=True)
+
+    def pull_current_odds_the_odds_api(self, bookmakers=None, api_key=None):
+        key = api_key or self.odds_api_key
+        if not key:
+            raise ValueError("THE_ODDS_API_KEY is required for The Odds API.")
+
+        params = {
+            "apiKey": key,
+            "regions": "us",
+            "markets": "spreads",
+            "oddsFormat": "american",
+        }
+        if bookmakers:
+            params["bookmakers"] = ",".join(bookmakers)
+
+        resp = self.session.get(
+            f"{ODDS_API_BASE_URL}/sports/basketball_ncaab/odds",
+            params=params,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return self._parse_the_odds_api_response(resp.json())
+
+    def pull_historical_odds_the_odds_api(self, date_iso, api_key=None):
+        key = api_key or self.odds_api_key
+        if not key:
+            raise ValueError("THE_ODDS_API_KEY is required for The Odds API.")
+
+        resp = self.session.get(
+            f"{ODDS_API_BASE_URL}/historical/sports/basketball_ncaab/odds",
+            params={
+                "apiKey": key,
+                "regions": "us",
+                "markets": "spreads",
+                "oddsFormat": "american",
+                "date": date_iso,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        return self._parse_the_odds_api_response(payload.get("data", []))
+
+    def _parse_the_odds_api_response(self, events):
+        rows = []
+        for ev in events:
+            home_raw = ev["home_team"]
+            away_raw = ev["away_team"]
+            home_spreads = []
+            for bm in ev.get("bookmakers", []):
+                for mkt in bm.get("markets", []):
+                    if mkt.get("key") != "spreads":
+                        continue
+                    for outcome in mkt.get("outcomes", []):
+                        if outcome.get("name") == home_raw and outcome.get("point") is not None:
+                            home_spreads.append(float(outcome["point"]))
+
+            if home_spreads:
+                consensus_home_spread = float(np.median(home_spreads))
+                rows.append(
+                    {
+                        "away_name": away_raw,
+                        "home_name": home_raw,
+                        "spread": -consensus_home_spread,
+                    }
+                )
+
+        if not rows:
+            return pd.DataFrame(columns=["away_name", "home_name", "spread"])
+
+        df = pd.DataFrame(rows).drop_duplicates(["away_name", "home_name"])
+        df["away_name"] = self.normalize_team_name(df["away_name"])
+        df["home_name"] = self.normalize_team_name(df["home_name"])
+        return df
+
+    def pull_current_odds_espn(self, start_date, end_date=None):
+        end_date = end_date or start_date
+        days = pd.date_range(
+            pd.to_datetime(start_date).normalize(),
+            pd.to_datetime(end_date).normalize(),
+            freq="D",
+        )
+        rows = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+            futures = [pool.submit(self._fetch_espn_scoreboard_day, d) for d in days]
+            for f in as_completed(futures):
+                for g in f.result():
+                    if pd.notna(g["espn_spread"]):
+                        rows.append(
+                            {
+                                "away_name": g["away_name"],
+                                "home_name": g["home_name"],
+                                "spread": g["espn_spread"],
+                            }
+                        )
+
+        if not rows:
+            return pd.DataFrame(columns=["away_name", "home_name", "spread"])
+
+        df = pd.DataFrame(rows).drop_duplicates(["away_name", "home_name"])
+        df["away_name"] = self.normalize_team_name(df["away_name"])
+        df["home_name"] = self.normalize_team_name(df["home_name"])
+        return df
+
+    def pull_odds_cbbd(self, season, start_date=None, end_date=None, api_key=None):
+        key = api_key or self.cbbd_api_key
+        if not key:
+            raise ValueError("CBBD_API_KEY is required for pull_odds_cbbd().")
+
+        params = {"season": season}
+        if start_date is not None:
+            params["startDateRange"] = pd.to_datetime(start_date).strftime("%Y-%m-%dT00:00:00Z")
+        if end_date is not None:
+            params["endDateRange"] = pd.to_datetime(end_date).strftime("%Y-%m-%dT23:59:59Z")
+
+        resp = self.session.get(
+            f"{CBBD_BASE_URL}/lines",
+            headers={"Authorization": f"Bearer {key}"},
+            params=params,
+            timeout=30,
+        )
+        resp.raise_for_status()
+
+        rows = []
+        for g in resp.json():
+            lines = g.get("lines") or []
+            spreads = [
+                float(l["spread"])
+                for l in lines
+                if l.get("spread") is not None
+            ]
+            if not spreads:
+                continue
+            dt = pd.to_datetime(g["startDate"], utc=True).tz_convert("US/Eastern")
+            rows.append(
+                {
+                    "away_name": g["awayTeam"],
+                    "home_name": g["homeTeam"],
+                    "close": -float(np.median(spreads)),
+                    "spread": -float(np.median(spreads)),
+                    "date": _format_short_date(dt),
+                    "year": season,
+                }
+            )
+
+        if not rows:
+            return pd.DataFrame(
+                columns=["away_name", "home_name", "close", "spread", "date", "year"]
+            )
+
+        df = pd.DataFrame(rows).drop_duplicates(["away_name", "home_name", "date", "year"])
+        df["away_name"] = self.normalize_team_name(df["away_name"])
+        df["home_name"] = self.normalize_team_name(df["home_name"])
+        return df
+
+    def pull_current_odds(self, start_date, end_date=None):
+        end_date = end_date or start_date
+        if self.cbbd_api_key:
+            season = _cbb_season_for_date(start_date)
+            odds = self.pull_odds_cbbd(season, start_date=start_date, end_date=end_date)
+            if not odds.empty:
+                return odds[["away_name", "home_name", "spread"]]
+
+        odds = self.pull_current_odds_espn(start_date, end_date)
+        if not odds.empty:
+            return odds
+
+        if self.odds_api_key:
+            return self.pull_current_odds_the_odds_api()
+
+        return pd.DataFrame(columns=["away_name", "home_name", "spread"])
+
+    def pull_historical_odds(self, first_year=2015, last_year=2025):
+        frames = [
+            self.pull_odds_cbbd(year) for year in range(first_year, last_year + 1)
+        ]
+        frames = [f for f in frames if not f.empty]
+        if not frames:
+            return pd.DataFrame(columns=["away_name", "home_name", "close", "date", "year"])
+        return pd.concat(frames, ignore_index=True)[
+            ["away_name", "home_name", "close", "date", "year"]
+        ]
+
+    def pull_ken_pom_data(self, year=None):
+        if self.kenpom_api_key:
+            return self.pull_ken_pom_official_api(year=year)
+
+        url = f"https://kenpom.com/index.php?y={year}" if year else "https://kenpom.com/"
+        import urllib.request
+
+        req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        soup = BeautifulSoup(html, "lxml")
+
+        table = soup.find("table", id="ratings-table")
+        if table is None:
+            raise RuntimeError(
+                "Could not find KenPom ratings-table. If KenPom blocked the request, "
+                "set KENPOM_API_KEY for the official API or use kenpompy."
+            )
+
+        rows = []
+        for tr in table.find_all("tr"):
+            tds = [td.get_text(strip=True) for td in tr.find_all("td") if td.get_text(strip=True)]
+            if len(tds) >= 10:
+                rows.append([tds[1], tds[5], tds[7], tds[9]])
+
+        ken_pom = pd.DataFrame(
+            rows, columns=["name", "ken_pom_offense", "ken_pom_defense", "tempo"]
+        )
+        ken_pom["name"] = ken_pom["name"].str.rstrip("0123456789 ")
+        ken_pom["name"] = self.normalize_team_name(ken_pom["name"])
+
+        numeric_cols = ["ken_pom_offense", "ken_pom_defense", "tempo"]
+        ken_pom[numeric_cols] = ken_pom[numeric_cols].apply(pd.to_numeric, errors="coerce")
+        ken_pom.dropna(subset=numeric_cols, inplace=True)
+        ken_pom[numeric_cols] = (
+            ken_pom[numeric_cols] - ken_pom[numeric_cols].mean()
+        ) / ken_pom[numeric_cols].std(ddof=0)
+
+        return ken_pom.reset_index(drop=True)
+
+    def pull_ken_pom_official_api(self, year=None, api_key=None):
+        key = api_key or self.kenpom_api_key
+        if not key:
+            raise ValueError("KENPOM_API_KEY is required for the official KenPom API.")
+
+        season = year or _cbb_season_for_date(pd.Timestamp.today())
+        resp = self.session.get(
+            "https://kenpom.com/api.php",
+            headers={"Authorization": f"Bearer {key}"},
+            params={"endpoint": "ratings", "y": season},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        df = pd.DataFrame(resp.json())
+
+        ken_pom = df[["TeamName", "AdjOE", "AdjDE", "AdjTempo"]].rename(
+            columns={
+                "TeamName": "name",
+                "AdjOE": "ken_pom_offense",
+                "AdjDE": "ken_pom_defense",
+                "AdjTempo": "tempo",
+            }
+        )
+        ken_pom["name"] = self.normalize_team_name(ken_pom["name"])
+        numeric_cols = ["ken_pom_offense", "ken_pom_defense", "tempo"]
+        ken_pom[numeric_cols] = ken_pom[numeric_cols].apply(pd.to_numeric, errors="coerce")
+        ken_pom[numeric_cols] = (
+            ken_pom[numeric_cols] - ken_pom[numeric_cols].mean()
+        ) / ken_pom[numeric_cols].std(ddof=0)
+        return ken_pom.reset_index(drop=True)
+
+    pull_ken_pom_data_selenium = pull_ken_pom_data
+
+    def _fetch_team_rankings_table(self, path, col_name, year=None, is_pct=False, strip_record=False):
+        url = f"https://www.teamrankings.com/ncaa-basketball/{path}"
+        if year is not None:
+            url = f"{url}?date={year}-05-01"
+
+        resp = self.session.get(url, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        table = soup.find("table", attrs={"class": "tr-table datatable scrollable"})
+        if table is None:
+            raise RuntimeError(f"Could not find TeamRankings table at {url}")
+
+        rows = []
+        for tr in table.find_all("tr"):
+            tds = [td.get_text(strip=True) for td in tr.find_all("td") if td.get_text(strip=True)]
+            if len(tds) >= 3 and tds[2] != "--":
+                rows.append((tds[1], tds[2]))
+
+        df = pd.DataFrame(rows, columns=["name", col_name])
+        if strip_record:
+            df["name"] = df["name"].str.replace(r"\s*\(\d+-\d+\)$", "", regex=True).str.strip()
+
+        vals = df[col_name].str.rstrip("%").astype(float)
+        df[col_name] = vals / 100.0 if is_pct else vals
+        return df
+
+    def pull_team_rankings_data(self, year=None):
+        specs = [
+            ("ranking/predictive-by-other", "team_rankings_rating", False, True),
+            ("ranking/schedule-strength-by-other", "strength_of_schedule", False, True),
+            ("stat/offensive-efficiency", "offensive_efficiency", False, False),
+            ("stat/defensive-efficiency", "defensive_efficiency", False, False),
+            ("stat/turnovers-per-possession", "to_percentage", True, False),
+            ("stat/opponent-turnovers-per-possession", "opp_to_percentage", True, False),
+            ("stat/defensive-rebounding-pct", "def_rebounding_percentage", True, False),
+            ("stat/offensive-rebounding-pct", "off_rebounding_percentage", True, False),
+            ("stat/free-throw-rate", "ft_rate", True, False),
+            ("stat/opponent-free-throw-rate", "opp_ft_rate", True, False),
+        ]
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=len(specs)) as pool:
+            future_map = {
+                pool.submit(
+                    self._fetch_team_rankings_table,
+                    path,
+                    col,
+                    year,
+                    is_pct,
+                    strip_rec,
+                ): col
+                for path, col, is_pct, strip_rec in specs
+            }
+            for f in as_completed(future_map):
+                col = future_map[f]
+                results[col] = f.result()
+
+        ordered_cols = [s[1] for s in specs]
+        df = results[ordered_cols[0]]
+        for col in ordered_cols[1:]:
+            df = df.merge(results[col], on="name", how="left")
+
+        df["name"] = self.normalize_team_name(df["name"])
+        df.dropna(subset=[ordered_cols[-1]], inplace=True)
+
+        num_cols = ordered_cols
+        df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce")
+        df[num_cols] = (df[num_cols] - df[num_cols].mean()) / df[num_cols].std(ddof=0)
+        return df.reset_index(drop=True)
+
+    def create_opponent_adjusted_stats(self, data, index_start):
+        data = data.copy()
+        data.iloc[:, index_start:] = data.iloc[:, index_start:].apply(pd.to_numeric)
+        updated = data.iloc[:, :index_start].copy()
+
+        updated["team_rankings_rating"] = (
+            data["home_team_rankings_rating"] - data["away_team_rankings_rating"]
+        )
+        updated["strength_of_schedule"] = (
+            data["home_strength_of_schedule"] - data["away_strength_of_schedule"]
+        )
+        updated["home_ken_pom"] = (
+            data["home_ken_pom_offense"] + data["away_ken_pom_defense"]
+        )
+        updated["away_ken_pom"] = (
+            -data["away_ken_pom_offense"] - data["home_ken_pom_defense"]
+        )
+        updated["home_efficiency"] = (
+            data["home_offensive_efficiency"] + data["away_defensive_efficiency"]
+        )
+        updated["away_efficiency"] = (
+            -data["away_offensive_efficiency"] - data["home_defensive_efficiency"]
+        )
+        updated["home_rebounding"] = (
+            data["home_def_rebounding_percentage"]
+            - data["away_off_rebounding_percentage"]
+        )
+        updated["away_rebounding"] = (
+            -data["away_def_rebounding_percentage"]
+            + data["home_off_rebounding_percentage"]
+        )
+        updated["home_turnover_rate"] = (
+            -data["home_to_percentage"] - data["away_opp_to_percentage"]
+        )
+        updated["away_turnover_rate"] = (
+            data["away_to_percentage"] + data["home_opp_to_percentage"]
+        )
+        updated["home_ft_rate"] = data["home_ft_rate"] + data["away_opp_ft_rate"]
+        updated["away_ft_rate"] = -data["away_ft_rate"] - data["home_opp_ft_rate"]
+
+        return updated
+
+    def _merge_team_features(self, games_df, year=None):
+        ken_pom = self.pull_ken_pom_data(year)
+        tr = self.pull_team_rankings_data(year)
+
+        away_kp = ken_pom.add_prefix("away_")
+        home_kp = ken_pom.add_prefix("home_")
+        away_tr = tr.add_prefix("away_")
+        home_tr = tr.add_prefix("home_")
+
+        data = games_df.merge(away_kp, on="away_name", how="left")
+        data = data.merge(home_kp, on="home_name", how="left")
+        data = data.merge(away_tr, on="away_name", how="left")
+        data = data.merge(home_tr, on="home_name", how="left")
+        return data
 
     def create_single_game_df(self, away, home, neutral, home_rest=2, away_rest=2):
-        '''
-        Create a dataframe for the specified teams
-        '''
-        data = pd.DataFrame()
-        #If neutral site, run both teams as home and away
-        #Not the best but there is model bias toward listed home team even accounting for a neutral site variable
-        data['away_name'] = [away, home] if neutral else [away]
-        data['home_name'] = [home, away] if neutral else [home]
-        data['neutral'] = neutral
-        data['away_short_rest'] = 1 if away_rest == 1 else 0
-        data['away_long_rest'] = 1 if away_rest > 6 else 0
-        data['home_short_rest'] = 1 if home_rest == 1 else 0
-        data['home_long_rest'] = 1 if home_rest > 0 else 0
+        data = pd.DataFrame(
+            {
+                "away_name": [away, home] if neutral else [away],
+                "home_name": [home, away] if neutral else [home],
+                "neutral": neutral,
+                "away_short_rest": 1 if away_rest == 1 else 0,
+                "away_long_rest": 1 if away_rest > 6 else 0,
+                "home_short_rest": 1 if home_rest == 1 else 0,
+                "home_long_rest": 1 if home_rest > 6 else 0,
+            }
+        )
+        data["away_name"] = self.normalize_team_name(data["away_name"])
+        data["home_name"] = self.normalize_team_name(data["home_name"])
 
-        data['away_name'].replace(self.team_replace, inplace=True)
-        data['home_name'].replace(self.team_replace, inplace=True)
-
-
-        #Pull Ken Pom data
-        ken_pom = self.pull_ken_pom_data_selenium()
-        away_ken_pom = ken_pom.copy()
-        home_ken_pom = ken_pom.copy()
-
-        away_ken_pom.columns = ['away_' + str(col) for col in away_ken_pom.columns]
-        home_ken_pom.columns = ['home_' + str(col) for col in home_ken_pom.columns]
-
-        data = data.merge(away_ken_pom, how='left')
-        data = data.merge(home_ken_pom, how='left')
-
-        ##Pull and merge teamrankings data
-        team_rankings_data = self.pull_team_rankings_data()
-
-        away_team_rankings = team_rankings_data.copy()
-        home_team_rankings = team_rankings_data.copy()
-
-        away_team_rankings.columns = ['away_' + str(col) for col in away_team_rankings.columns]
-        home_team_rankings.columns = ['home_' + str(col) for col in home_team_rankings.columns]
-
-        data = data.merge(away_team_rankings, how='left')
-        data = data.merge(home_team_rankings, how='left')
-
-        ##Drop all rows with nans
-        ##This is done so we can standardize the stats
-        print(data.loc[data.isna().any(axis=1), ['home_name', 'away_name']])
+        data = self._merge_team_features(data, year=None)
+        missing = data.loc[data.isna().any(axis=1), ["home_name", "away_name"]]
+        if not missing.empty:
+            print("Dropped due to missing team stats:\n", missing)
         data.dropna(inplace=True)
-
-        ##Standardize the numeric data and update in terms of strengths of both teams
-        data = self.create_opponent_adjusted_stats(data, 7)
-
-        return data
+        return self.create_opponent_adjusted_stats(data, 7)
 
     def create_dataframe(self, start_date, end_date):
         data = self.pull_schedule(start_date, end_date)
+        if data.empty:
+            return data
 
-        ##Pull Ken Pom data
-        historical_ken_pom = self.pull_ken_pom_data_selenium()
-
-        away_ken_pom = historical_ken_pom.copy()
-        home_ken_pom= historical_ken_pom.copy()
-
-        away_ken_pom.columns = ['away_' + str(col) for col in away_ken_pom.columns]
-        home_ken_pom.columns = ['home_' + str(col) for col in home_ken_pom.columns]
-
-        data = data.merge(away_ken_pom, how='left')
-        data = data.merge(home_ken_pom, how='left')
-
-        ##Pull and merge teamrankings data
-        historical_team_rankings_data = self.pull_team_rankings_data()
-
-        away_team_rankings = historical_team_rankings_data.copy()
-        home_team_rankings = historical_team_rankings_data.copy()
-
-        away_team_rankings.columns = ['away_' + str(col) for col in away_team_rankings.columns]
-        home_team_rankings.columns = ['home_' + str(col) for col in home_team_rankings.columns]
-
-        data = data.merge(away_team_rankings, how='left')
-        data = data.merge(home_team_rankings, how='left')
-
-        ##Drop all rows with nans
-        ##This is done so we can standardize the stats
-        print(data.loc[data.isna().any(axis=1), ['home_name', 'away_name']])
+        data = self._merge_team_features(data, year=None)
+        missing = data.loc[data.isna().any(axis=1), ["home_name", "away_name"]]
+        if not missing.empty:
+            print("Dropped due to missing team stats:\n", missing)
         data.dropna(inplace=True)
 
-        ##Standardize the numeric data and update in terms of strengths of both teams
         data = self.create_opponent_adjusted_stats(data, 10)
 
-        ##Pull odds for the games
-        ##Use reverse odds to ensure that neutral site games are included
-        odds = self.pull_daily_odds_team_rankings()
-        reversed_odds = pd.DataFrame()
-        reversed_odds['home_name'] = odds['away_name']
-        reversed_odds['away_name'] = odds['home_name']
-        reversed_odds['spread'] = -odds['spread']
-        odds = pd.concat([odds, reversed_odds])
+        odds = self.pull_current_odds(start_date, end_date)
+        if not odds.empty:
+            reversed_odds = pd.DataFrame(
+                {
+                    "home_name": odds["away_name"],
+                    "away_name": odds["home_name"],
+                    "spread": -odds["spread"],
+                }
+            )
+            odds = pd.concat([odds, reversed_odds], ignore_index=True).drop_duplicates(
+                ["away_name", "home_name"]
+            )
+            data = data.merge(odds, on=["away_name", "home_name"], how="left")
+        else:
+            data["spread"] = np.nan
 
-        ##Merge odds in
-        data = data.merge(odds, how='left')
-
-        ##Drop unneccessary columns
-        data.drop(columns=['away_abbr', 'home_abbr'], inplace=True) 
-
+        data.drop(columns=["away_abbr", "home_abbr"], inplace=True)
         return data
 
-    def pull_schedule(self, start_date, end_date):
-        '''
-        Pull all games for a given time period
-        '''
-        schedule = Boxscores(start_date, end_date).games
-        full_schedule = list(schedule.values())
-        full_schedule = [game for day in full_schedule for game in day]
-        full_schedule = pd.DataFrame(full_schedule)
-
-        #Clean up data by removing bad data, duplicates, and completed games
-        full_schedule = full_schedule[full_schedule['away_abbr'] != full_schedule['home_abbr']]        
-        full_schedule = full_schedule[pd.isnull(full_schedule['winning_abbr'])]
-
-        schedules = []
-        team_list = list(set(full_schedule['away_abbr']).union(set(full_schedule['home_abbr'])))
-        ##Pull individual schedules for other factors that are not in the boxscore
-        for team_abr in team_list:
-            try:
-                team_schedule = Schedule(team_abr).dataframe.sort_values(['game'])
-                team_schedule['team_abbr'] = team_abr.lower()
-                team_schedule['days_between_games'] = team_schedule['datetime'].diff() / np.timedelta64(1, 'D')
-                team_schedule['neutral'] = np.where(team_schedule['location'] == 'Neutral', 1, 0)
-                team_schedule = team_schedule[(team_schedule['datetime'] >= start_date) & (team_schedule['datetime'] < end_date+pd.DateOffset(1))]
-                schedules.append(team_schedule[['date', 'team_abbr','boxscore_index', 'neutral', 'days_between_games']])
-            except:
-                ##In these cases, the team may be new to D1 and was not playing during the season we are pulling
-                ##Therefore, we skip this team and continue looping through other teams
-                continue
-
-        schedules = pd.concat(schedules)
-        schedules.rename(columns={'boxscore_index':'boxscore'}, inplace=True)
-
-        ##Merge location and days_between_games
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'neutral', 'date']].drop_duplicates(), how='left', left_on=['away_abbr'], right_on=['team_abbr'])
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'date', 'days_between_games']], how='left',\
-                                            left_on=['away_abbr', 'date'], right_on=['team_abbr', 'date'])
-        full_schedule.rename(columns={'days_between_games':'away_off_days'}, inplace=True)
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'date', 'days_between_games']], how='left',\
-                                            left_on=['home_abbr', 'date'], right_on=['team_abbr', 'date'])
-        full_schedule.rename(columns={'days_between_games':'home_off_days'}, inplace=True)
-
-        ##For model-building, create categorical variables for short rest and long rest by team
-        ##Short rest is considered playing back to back days
-        ##Long rest is considered a week or more between games
-        full_schedule['away_short_rest'] = np.where(full_schedule['away_off_days'] == 1, 1, 0)
-        full_schedule['away_long_rest'] = np.where(full_schedule['away_off_days'] > 6, 1, 0)
-        full_schedule['home_short_rest'] = np.where(full_schedule['home_off_days'] == 1, 1, 0)
-        full_schedule['home_long_rest'] = np.where(full_schedule['home_off_days'] > 6, 1, 0)
-
-        full_schedule.drop(columns=['team_abbr_x', 'team_abbr_y'], inplace=True)
-
-        ##Drop games with no date
-        full_schedule.dropna(subset=['date'], inplace=True)
-
-        ##Fix date format to match odds
-        full_schedule['date'] = full_schedule['date'].apply(lambda x: x.split(",")[1].strip())
-
-        full_schedule = full_schedule[['away_abbr', 'away_name', 'home_abbr', 'home_name',\
-                                                     'date', 'neutral', 'away_short_rest', 'away_long_rest',\
-                                                                                        'home_short_rest', 'home_long_rest']]
-        return full_schedule
-
-    def pull_historical_schedule(self, year):
-        '''
-        Pulls all games from a college basketball season
-        '''
-        yearly_schedule = Boxscores(datetime(year-1, 11, 1), datetime(year, 4, 15)).games
-        full_schedule = list(yearly_schedule.values())
-        full_schedule = [game for day in full_schedule for game in day]
-        full_schedule = pd.DataFrame(full_schedule)
-        full_schedule['year'] = year
-
-        ##Clean up data by removing bad data and duplicates
-        full_schedule = full_schedule[full_schedule['away_abbr'] != full_schedule['home_abbr']]
-        full_schedule.drop_duplicates(subset=['boxscore'], inplace=True)
-
-        schedules = []
-        team_list = list(set(full_schedule['away_abbr']).union(set(full_schedule['home_abbr'])))
-        ##Pull individual schedules for other factors that are not in the boxscore
-        for team_abr in team_list:
-            try:
-                team_schedule = Schedule(team_abr, year).dataframe.sort_values(['datetime'])
-                team_schedule['team_abbr'] = team_abr.lower()
-                team_schedule['days_between_games'] = team_schedule['datetime'].diff() / np.timedelta64(1, 'D')
-                team_schedule['neutral'] = np.where(team_schedule['location'] == 'Neutral', 1, 0)
-                schedules.append(team_schedule[['date', 'team_abbr','boxscore_index', 'neutral', 'days_between_games']])
-            except:
-                ##In these cases, the team may be new to D1 and was not playing during the season we are pulling
-                ##Therefore, we skip this team and continue looping through other teams
-                continue
-
-        schedules = pd.concat(schedules).reset_index(drop=True)
-        schedules.rename(columns={'boxscore_index':'boxscore'}, inplace=True)
-
-        ##Merge location and days_between_games
-        full_schedule = full_schedule.merge(schedules[['boxscore', 'neutral', 'date']].drop_duplicates(), how='left', left_on=['boxscore'], right_on=['boxscore'])
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'boxscore', 'days_between_games']], how='left',\
-                                            left_on=['away_abbr', 'boxscore'], right_on=['team_abbr', 'boxscore'])
-        full_schedule.rename(columns={'days_between_games':'away_off_days'}, inplace=True)
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'boxscore', 'days_between_games']], how='left',\
-                                            left_on=['home_abbr', 'boxscore'], right_on=['team_abbr', 'boxscore'])
-        full_schedule.rename(columns={'days_between_games':'home_off_days'}, inplace=True)
-
-        ##For model-building, create categorical variables for short rest and long rest by team
-        ##Short rest is considered playing back to back days
-        ##Long rest is considered a week or more between games
-        full_schedule['away_short_rest'] = np.where(full_schedule['away_off_days'] == 1, 1, 0)
-        full_schedule['away_long_rest'] = np.where(full_schedule['away_off_days'] > 6, 1, 0)
-        full_schedule['home_short_rest'] = np.where(full_schedule['home_off_days'] == 1, 1, 0)
-        full_schedule['home_long_rest'] = np.where(full_schedule['home_off_days'] > 6, 1, 0)
-
-        full_schedule.drop(columns=['team_abbr_x', 'team_abbr_y'], inplace=True)
-
-        ##Drop games with no date
-        full_schedule.dropna(subset=['date'], inplace=True)
-
-        ##Fix date format to match odds
-        full_schedule['date'] = full_schedule['date'].apply(lambda x: x.split(",")[1].strip())
-
-        full_schedule = full_schedule[['away_abbr', 'away_name', 'away_score', 'home_abbr', 'home_name',\
-                                                     'home_score', 'date', 'year', 'neutral', 'away_short_rest', 'away_long_rest',\
-                                                                                        'home_short_rest', 'home_long_rest']]
-        return full_schedule
-
     def create_historical_data(self, year):
-
         historical_data = self.pull_historical_schedule(year)
+        historical_data["neutral"] = np.where(historical_data["neutral"] == 1, 1, 0)
 
-        ##Some locations are nans so set them to be campus games
-        historical_data['neutral'] = np.where(historical_data['neutral'] == 1, 1, 0)
-
-        ##Pull Ken Pom data
-        historical_ken_pom = self.pull_ken_pom_data_selenium(year)
-
-        away_ken_pom = historical_ken_pom.copy()
-        home_ken_pom= historical_ken_pom.copy()
-
-        away_ken_pom.columns = ['away_' + str(col) for col in away_ken_pom.columns]
-        home_ken_pom.columns = ['home_' + str(col) for col in home_ken_pom.columns]
-
-        historical_data = historical_data.merge(away_ken_pom, how='left')
-        historical_data = historical_data.merge(home_ken_pom, how='left')
-
-        ##Pull and merge teamrankings data
-        historical_team_rankings_data = self.pull_team_rankings_data(year)
-
-        away_team_rankings = historical_team_rankings_data.copy()
-        home_team_rankings = historical_team_rankings_data.copy()
-
-        away_team_rankings.columns = ['away_' + str(col) for col in away_team_rankings.columns]
-        home_team_rankings.columns = ['home_' + str(col) for col in home_team_rankings.columns]
-
-        historical_data = historical_data.merge(away_team_rankings, how='left')
-        historical_data = historical_data.merge(home_team_rankings, how='left')
-
-        ##Drop all rows with nans
-        ##This is done so we can standardize the stats
-        print(historical_data.loc[historical_data.isna().any(axis=1), ['home_name', 'away_name']])
+        historical_data = self._merge_team_features(historical_data, year=year)
+        missing = historical_data.loc[
+            historical_data.isna().any(axis=1), ["home_name", "away_name"]
+        ]
+        if not missing.empty:
+            print(f"[{year}] Dropped {len(missing)} games due to missing team stats")
         historical_data.dropna(inplace=True)
 
-        ##Standardize the numeric data and update in terms of strengths of both teams
         historical_data = self.create_opponent_adjusted_stats(historical_data, 13)
-
-        ##Get a result column
-        ##Home Score - Away Score (negative means away win)
-        historical_data['result'] = historical_data['home_score'] - historical_data['away_score']
-
-        ##Drop NaNs in result which means the game was cancelled
-        historical_data.dropna(subset=['result'], inplace=True)
-
+        historical_data["result"] = (
+            historical_data["home_score"] - historical_data["away_score"]
+        )
+        historical_data.dropna(subset=["result"], inplace=True)
         return historical_data
 
-    def create_historical_dataframe(self, first_year=2015, last_year=2020):
-        '''
-        Compiles a complete dataframe of stats to use to train models
-        Uses specified years given        
-        Note: 2015 is the first available year
-        '''
+    def create_historical_dataframe(self, first_year=2015, last_year=2025):
         full_data = []
-        ##Pull the historical data for each specified year
-        for year in range(first_year, last_year+1):
+        for year in range(first_year, last_year + 1):
             subset_data = self.create_historical_data(year)
             full_data.append(subset_data)
-
-            ##Save after each year is completed
-            partial_historical_data = pd.concat(full_data)
-            partial_historical_data.to_csv('historical_cbb_data.csv', index=False)
-
-        full_data = pd.concat(full_data)
-
-        ##Pull in historical odds
-        odds = self.pull_historical_odds()
-        reversed_odds = pd.DataFrame()
-        reversed_odds['home_name'] = odds['away_name']
-        reversed_odds['away_name'] = odds['home_name']
-        reversed_odds['close'] = -odds['close']
-        reversed_odds['year'] = odds['year']
-        reversed_odds['date'] = odds['date']
-        odds = pd.concat([odds, reversed_odds])
-        full_data = full_data.merge(odds, how='left')
-
-        ##Save full historical data
-        full_data.to_csv('historical_cbb_data_full.csv', index=False)
-
-        ##Drop all columns that aren't used for regression and save
-        full_data.drop(columns=['away_abbr', 'home_abbr', 'away_name', 'home_name', 'home_score', 'away_score', 'date'], inplace=True) 
-
-        full_data.to_csv('historical_cbb_data.csv', index=False)
-
-        return full_data
-
-    def create_opponent_adjusted_stats(self, data, index_start):
-        '''
-        Update the dataframe to reflect differences in team level for each stat
-        First, normalize all columns after a certain index        
-        Then, calculate the difference between the two teams with the opposing stats.
-
-        All of these comparative stats will be in terms of the home team
-        '''
-        
-        ##First ensure that all columns are numeric
-        data.iloc[:,index_start:] = data.iloc[:,index_start:].apply(pd.to_numeric)        
-
-        ##Create a new dataframe to hold the opponent-adjusted stats
-        updated_data = data.iloc[:,0:index_start].copy()
-
-        ##Create a column for the opponent adjusted stats from the original dataframe
-        ##There might be a way to automate this in the future but do it manually for now
-        ##If lower is an indicator of better perfomance, we subtract it from 1
-        ##i.e. defensive stats
-        ##Lower rank indicates a better team
-        updated_data['team_rankings_rating'] = data['home_team_rankings_rating'] - data['away_team_rankings_rating']
-        updated_data['strength_of_schedule'] = data['home_strength_of_schedule'] - data['away_strength_of_schedule']
-
-        updated_data['home_ken_pom'] = data['home_ken_pom_offense'] + data['away_ken_pom_defense']
-        updated_data['away_ken_pom'] = -data['away_ken_pom_offense'] - data['home_ken_pom_defense']
-
-        updated_data['home_efficiency'] = data['home_offensive_efficiency'] + data['away_defensive_efficiency']
-        updated_data['away_efficiency'] = -data['away_offensive_efficiency'] - data['home_defensive_efficiency']
-        updated_data['home_rebounding'] = data['home_def_rebounding_percentage'] - data['away_off_rebounding_percentage']
-        updated_data['away_rebounding'] = -data['away_def_rebounding_percentage'] + data['home_off_rebounding_percentage']
-        updated_data['home_turnover_rate'] = -data['home_to_percentage'] - data['away_opp_to_percentage']
-        updated_data['away_turnover_rate'] = data['away_to_percentage'] + data['home_opp_to_percentage']
-        updated_data['home_ft_rate'] = data['home_ft_rate'] + data['away_opp_ft_rate']
-        updated_data['away_ft_rate'] = -data['away_ft_rate'] - data['away_opp_ft_rate']
-
-        return updated_data
-        
-    def pull_massey_composite_rankings(self, year=None):
-        '''
-        Pull the historical Massey composite rankings for the given year
-        These rankings are the average of the model rankings from online
-        '''
-
-        # Due to JavaScript, we need to use selenium to pull this data
-        tries = 0
-        run_loop = True
-        while run_loop:
-            # Wrap this in a try-except to keep trying until it works
-            # Give up after 5 tries
-            try:
-                browser = webdriver.Chrome(ChromeDriverManager().install())
-                if year is not None:
-                    url = 'https://www.masseyratings.com/ranks?s=cb&dt=' + self.massey_rating_historical_dates[year]
-                else:
-                    url = 'https://www.masseyratings.com/ranks?s=cb'
-
-                browser.get(url)
-                time.sleep(15)
-                page_source = browser.page_source
-                soup = BeautifulSoup(page_source, 'lxml')
-
-                table = soup.find('table', attrs={'class':'mytable'})
-                ##Parse through the rows of the table to create the dataframe
-                table_rows = table.find_all('tr')
-                run_loop = False
-            except:
-                tries += 1
-                print('failed on try {}'.format(tries))
-                browser.quit()
-                if tries >= 5:
-                    sys.exit("Massey load failed")
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row and len(row) > 1:
-                row = [row[i] for i in [0, -2]]
-                res.append(row)        
-        
-        historical_massey = pd.DataFrame(res)
-        historical_massey.columns = ['name', 'average_ranking']
-        browser.quit()
-
-        
-        ##Update team names to match the schedule names
-        historical_massey['name'] = historical_massey['name'].apply(lambda x: x.replace(' St', ' State') if ' State' not in x else x)
-        historical_massey['name'].replace(self.team_replace, inplace=True)
-        historical_massey = historical_massey[historical_massey['name'] != 'Correlation']
-
-        ##Normalize the data
-        historical_massey.iloc[:,1:] = historical_massey.iloc[:,1:].apply(pd.to_numeric) 
-        historical_massey.iloc[:,1:] = (historical_massey.iloc[:,1:] - np.mean(historical_massey.iloc[:,1:], axis=0))/(np.std(historical_massey.iloc[:,1:], axis=0))
-
-        return historical_massey
-
-    def pull_ken_pom_data(self, year=None):
-        '''
-        Pull KenPom Data for the given year
-        '''
-        ##Create the urls which we will use to webscrape
-        if year is not None:
-            f_url = 'https://kenpom.com/index.php?y=' + str(year)
-        else:
-            f_url = 'https://kenpom.com/'
-        f_url = requests.get(f_url).text
-        soup = BeautifulSoup(f_url, 'lxml')
-
-        ##Find the table on the page
-        f_table = soup.find('table',id='ratings-table')
-
-        ##Parse through the rows of the table to create the dataframe
-        f_table_rows = f_table.find_all('tr')
-        res = []
-        for tr in f_table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        ken_pom_stats = pd.DataFrame(res)
-
-        ken_pom_stats = ken_pom_stats[[1, 5, 7, 9]]
-        ken_pom_stats.columns = ['name', 'ken_pom_offense', 'ken_pom_defense', 'tempo']
-
-        ##Clean the data
-        ken_pom_stats['name'] = ken_pom_stats['name'].apply(lambda x: x.rstrip('0123456789 '))
-
-        ##Update the team names to match the base
-        ken_pom_stats['name'] = ken_pom_stats['name'].apply(lambda x: x.replace(' St.', ' State'))
-        ken_pom_stats['name'].replace(self.team_replace, inplace=True)
-
-        ##Normalize the data
-        ken_pom_stats.iloc[:,1:] = ken_pom_stats.iloc[:,1:].apply(pd.to_numeric) 
-        ken_pom_stats.iloc[:,1:] = (ken_pom_stats.iloc[:,1:] - np.mean(ken_pom_stats.iloc[:,1:], axis=0))/(np.std(ken_pom_stats.iloc[:,1:], axis=0))
-
-        return ken_pom_stats
-
-    def pull_ken_pom_data_selenium(self, year=None):
-        '''
-        Pull KenPom Data for the given year
-        '''
-        # Due to JavaScript, we need to use selenium to pull this data
-        tries = 0
-        run_loop = True
-        while run_loop:
-            # Wrap this in a try-except to keep trying until it works
-            # Give up after 5 tries
-            try:
-                browser = webdriver.Chrome(ChromeDriverManager().install())
-                ##Create the urls which we will use to webscrape
-                if year is not None:
-                    f_url = 'https://kenpom.com/index.php?y=' + str(year)
-                else:
-                    f_url = 'https://kenpom.com/'
-
-                browser.get(f_url)
-                time.sleep(15)
-                page_source = browser.page_source
-                soup = BeautifulSoup(page_source, 'lxml')
-
-                ##Find the table on the page
-                f_table = soup.find('table', id='ratings-table')
-                run_loop = False
-            except:
-                tries += 1
-                print('failed on try {}'.format(tries))
-                browser.quit()
-                if tries >= 5:
-                    sys.exit("Massey load failed")
-
-        ##Parse through the rows of the table to create the dataframe
-        f_table_rows = f_table.find_all('tr')
-        res = []
-        for tr in f_table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        ken_pom_stats = pd.DataFrame(res)
-
-        ken_pom_stats = ken_pom_stats[[1, 5, 7, 9]]
-        ken_pom_stats.columns = ['name', 'ken_pom_offense', 'ken_pom_defense', 'tempo']
-        browser.quit()
-
-        ##Clean the data
-        ken_pom_stats['name'] = ken_pom_stats['name'].apply(lambda x: x.rstrip('0123456789 '))
-
-        ##Update the team names to match the base
-        ken_pom_stats['name'] = ken_pom_stats['name'].apply(lambda x: x.replace(' St.', ' State'))
-        ken_pom_stats['name'].replace(self.team_replace, inplace=True)
-
-        ##Normalize the data
-        ken_pom_stats.iloc[:, 1:] = ken_pom_stats.iloc[:, 1:].apply(pd.to_numeric)
-        ken_pom_stats.iloc[:, 1:] = (ken_pom_stats.iloc[:, 1:] - np.mean(ken_pom_stats.iloc[:, 1:], axis=0)) / (
-            np.std(ken_pom_stats.iloc[:, 1:], axis=0))
-
-        return ken_pom_stats
-
-    def pull_team_rankings_data(self, year=None):
-        '''
-        Pull and compile all data from teamrankings.com
-        '''
-        ##Pull team rankings predictive rankings
-        team_rankings_data = self.pull_team_rankings_ratings(year)
-
-        ##Pull strength of schedule
-        strength_of_schedule = self.pull_strength_of_schedule(year)
-        team_rankings_data = team_rankings_data.merge(strength_of_schedule, how='left')
-
-        ##Pull efficiency for and against
-        off_eff = self.pull_offensive_efficiency(year)
-        team_rankings_data = team_rankings_data.merge(off_eff, how='left')
-        def_eff = self.pull_defensive_efficiency(year)
-        team_rankings_data = team_rankings_data.merge(def_eff, how='left')
-
-        ##Pull turnover rate for and against
-        to_rate = self.pull_turnovers_per_possession(year)
-        team_rankings_data = team_rankings_data.merge(to_rate, how='left')
-        opp_to_rate = self.pull_opp_turnovers_per_possession(year)
-        team_rankings_data = team_rankings_data.merge(opp_to_rate, how='left')
-
-        ##Pull offensive and defensive rebounding numbers
-        def_reb = self.pull_defensive_rebounding_percentage(year)
-        team_rankings_data = team_rankings_data.merge(def_reb, how='left')
-        off_reb = self.pull_offensive_rebounding_percentage(year)
-        team_rankings_data = team_rankings_data.merge(off_reb, how='left')
-
-        ##Pull free throw rate for and against
-        ft_rate = self.pull_ft_rate(year)
-        team_rankings_data = team_rankings_data.merge(ft_rate, how='left')
-        opp_ft_rate = self.pull_opp_ft_rate(year)
-        team_rankings_data = team_rankings_data.merge(opp_ft_rate, how='left')
-
-        ##Update the team names to match the base
-        team_rankings_data['name'] = team_rankings_data['name'].apply(lambda x: x.replace(' St', ' State') if ' State' not in x else x)
-        team_rankings_data['name'].replace(self.team_replace, inplace=True)
-
-        ##Normalize the data
-        team_rankings_data = team_rankings_data[pd.notnull(team_rankings_data.iloc[:,-1])]
-        team_rankings_data.iloc[:,1:] = team_rankings_data.iloc[:,1:].apply(pd.to_numeric) 
-        team_rankings_data.iloc[:,1:] = (team_rankings_data.iloc[:,1:] - np.mean(team_rankings_data.iloc[:,1:], axis=0))/(np.std(team_rankings_data.iloc[:,1:], axis=0))
-
-        return team_rankings_data
-
-    def pull_team_rankings_ratings(self, year=None):
-        '''
-        Pull team rankings predicted rankings for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/ranking/predictive-by-other?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/ranking/predictive-by-other'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        team_rankings = pd.DataFrame(res)
-        team_rankings = team_rankings[[1,2]]
-        team_rankings.columns = ['name', 'team_rankings_rating']
-        
-        ##Get rid of the record in the team name
-        team_rankings['name'] = team_rankings['name'].apply(lambda x: x[0:x.rfind(' (')])
-
-        return team_rankings
-
-    def pull_strength_of_schedule(self, year=None):
-        '''
-        Pull strength of schedule for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/ranking/schedule-strength-by-other?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/ranking/schedule-strength-by-other'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        strengh_of_schedule = pd.DataFrame(res)
-        strengh_of_schedule = strengh_of_schedule[[1,2]]
-        strengh_of_schedule = strengh_of_schedule[strengh_of_schedule[2] != '--']
-        strengh_of_schedule.columns = ['name', 'strength_of_schedule']
-        
-        ##Get rid of the record in the team name
-        strengh_of_schedule['name'] = strengh_of_schedule['name'].apply(lambda x: x[0:x.rfind(' (')])
-
-        return strengh_of_schedule
-
-    def pull_offensive_efficiency(self, year=None):
-        '''
-        Pull offensive efficiency percentage for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/offensive-efficiency?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/offensive-efficiency'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        efficiency = pd.DataFrame(res)
-        efficiency = efficiency[[1,2]]
-        efficiency = efficiency[efficiency[2] != '--']
-        efficiency.columns = ['name', 'offensive_efficiency']
-        
-        ##Convert string to float
-        efficiency['offensive_efficiency'] = efficiency['offensive_efficiency'].str.rstrip('%').astype('float')
-
-        return efficiency
-
-    def pull_defensive_efficiency(self, year=None):
-        '''
-        Pull defensive efficiency for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/defensive-efficiency?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/defensive-efficiency'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        efficiency = pd.DataFrame(res)
-        efficiency = efficiency[[1,2]]
-        efficiency = efficiency[efficiency[2] != '--']
-        efficiency.columns = ['name', 'defensive_efficiency']
-        
-        ##Convert string to float
-        efficiency['defensive_efficiency'] = efficiency['defensive_efficiency'].str.rstrip('%').astype('float')
-
-        return efficiency
-
-    def pull_turnovers_per_possession(self, year=None):
-        '''
-        Pull turnovers per possession for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/turnovers-per-possession?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/turnovers-per-possession'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        to_percentage = pd.DataFrame(res)
-        to_percentage = to_percentage[[1,2]]
-        to_percentage = to_percentage[to_percentage[2] != '--']
-        to_percentage.columns = ['name', 'to_percentage']
-        
-        ##Convert string to float
-        to_percentage['to_percentage'] = to_percentage['to_percentage'].str.rstrip('%').astype('float') / 100.0
-
-        return to_percentage
-
-    def pull_opp_turnovers_per_possession(self, year=None):
-        '''
-        Pull opponent turnovers per possession for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-turnovers-per-possession?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-turnovers-per-possession'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        to_percentage = pd.DataFrame(res)
-        to_percentage = to_percentage[[1,2]]
-        to_percentage = to_percentage[to_percentage[2] != '--']
-        to_percentage.columns = ['name', 'opp_to_percentage']
-        
-        ##Convert string to float
-        to_percentage['opp_to_percentage'] = to_percentage['opp_to_percentage'].str.rstrip('%').astype('float') / 100.0
-
-        return to_percentage
-
-    def pull_defensive_rebounding_percentage(self, year=None):
-        '''
-        Pull defensive rebounding percentage for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/defensive-rebounding-pct?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/defensive-rebounding-pct'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        rebounding = pd.DataFrame(res)
-        rebounding = rebounding[[1,2]]
-        rebounding = rebounding[rebounding[2] != '--']
-        rebounding.columns = ['name', 'def_rebounding_percentage']
-        
-        ##Convert string to float
-        rebounding['def_rebounding_percentage'] = rebounding['def_rebounding_percentage'].str.rstrip('%').astype('float') / 100.0
-
-        return rebounding
-
-    def pull_offensive_rebounding_percentage(self, year=None):
-        '''
-        Pull offensive rebounding percentage for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/offensive-rebounding-pct?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/offensive-rebounding-pct'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        rebounding = pd.DataFrame(res)
-        rebounding = rebounding[[1,2]]
-        rebounding = rebounding[rebounding[2] != '--']
-        rebounding.columns = ['name', 'off_rebounding_percentage']
-        
-        ##Convert string to float
-        rebounding['off_rebounding_percentage'] = rebounding['off_rebounding_percentage'].str.rstrip('%').astype('float') / 100.0
-
-        return rebounding
-
-    def pull_ft_rate(self, year=None):
-        '''
-        Pull free throw rate for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/free-throw-rate?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/free-throw-rate'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        ft_rate = pd.DataFrame(res)
-        ft_rate = ft_rate[[1,2]]
-        ft_rate = ft_rate[ft_rate[2] != '--']
-        ft_rate.columns = ['name', 'ft_rate']
-        
-        ##Convert string to float
-        ft_rate['ft_rate'] = ft_rate['ft_rate'].str.rstrip('%').astype('float') / 100.0
-
-        return ft_rate
-
-    def pull_opp_ft_rate(self, year=None):
-        '''
-        Pull opponent free throw rate for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-free-throw-rate?date=' + str(year)+ '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-free-throw-rate'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        ft_rate = pd.DataFrame(res)
-        ft_rate = ft_rate[[1,2]]
-        ft_rate = ft_rate[ft_rate[2] != '--']
-        ft_rate.columns = ['name', 'opp_ft_rate']
-        
-        ##Convert string to float
-        ft_rate['opp_ft_rate'] = ft_rate['opp_ft_rate'].str.rstrip('%').astype('float') / 100.0
-
-        return ft_rate
-
-    def pull_tempo(self, year=None):
-        '''
-        Pull possessions per game for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/possessions-per-game?date=' + str(
-                year) + '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/possessions-per-game'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        tempo = pd.DataFrame(res)
-        tempo = tempo[[1, 2]]
-        tempo = tempo[tempo[2] != '--']
-        tempo.columns = ['name', 'possessions_per_game']
-
-        return tempo
-
-    def pull_three_point_rate(self, year=None):
-        '''
-        Pull three point rate for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/three-point-rate?date=' + str(
-                year) + '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/three-point-rate'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        three_point_rate = pd.DataFrame(res)
-        three_point_rate = three_point_rate[[1, 2]]
-        three_point_rate = three_point_rate[three_point_rate[2] != '--']
-        three_point_rate.columns = ['name', 'three_point_rate']
-
-        ##Convert string to float
-        three_point_rate['three_point_rate'] = three_point_rate['three_point_rate'].str.rstrip('%').astype('float') / 100.0
-
-        return three_point_rate
-
-    def pull_opp_three_point_rate(self, year=None):
-        '''
-        Pull opponent three point rate for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-three-point-rate?date=' + str(
-                year) + '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-three-point-rate'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        three_point_rate = pd.DataFrame(res)
-        three_point_rate = three_point_rate[[1, 2]]
-        three_point_rate = three_point_rate[three_point_rate[2] != '--']
-        three_point_rate.columns = ['name', 'opp_three_point_rate']
-
-        ##Convert string to float
-        three_point_rate['opp_three_point_rate'] = three_point_rate['opp_three_point_rate'].str.rstrip('%').astype('float') / 100.0
-
-        return three_point_rate
-
-    def pull_foul_rate(self, year=None):
-        '''
-        Pull foul rate for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/personal-fouls-per-possession?date=' + str(
-                year) + '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/personal-fouls-per-possession'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        foul_rate = pd.DataFrame(res)
-        foul_rate = foul_rate[[1, 2]]
-        foul_rate = foul_rate[foul_rate[2] != '--']
-        foul_rate.columns = ['name', 'foul_rate']
-
-        ##Convert string to float
-        foul_rate['foul_rate'] = foul_rate['foul_rate'].str.rstrip('%').astype('float') / 100.0
-
-        return foul_rate
-
-    def pull_opp_foul_rate(self, year=None):
-        '''
-        Pull opponent foul rate for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-personal-fouls-per-possession?date=' + str(
-                year) + '-05-01'
-        else:
-            url = 'https://www.teamrankings.com/ncaa-basketball/stat/opponent-personal-fouls-per-possession'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class': 'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        foul_rate = pd.DataFrame(res)
-        foul_rate = foul_rate[[1, 2]]
-        foul_rate = foul_rate[foul_rate[2] != '--']
-        foul_rate.columns = ['name', 'opp_foul_rate']
-
-        ##Convert string to float
-        foul_rate['opp_foul_rate'] = foul_rate['opp_foul_rate'].str.rstrip('%').astype('float') / 100.0
-
-        return foul_rate
-
-    def pull_historical_odds(self, subfolder_name=r'\CBB Historical Odds'):
-        '''
-        Compile historical closing odds from excel files from sportsbookreviewsonline
-        The historical odds were stored as xlsx files
-        Note: subfolder name containing the xlsx files must be passed in
-        '''
-
-        ##Navigate to the sub folder and get list all files
-        odds_path = os.getcwd() + subfolder_name
-        odds_files = pd.Series(os.listdir(odds_path))
-
-        odds = []
-        for odds_file in odds_files:
-            ##Get the year from the odds_file name
-            year = int(re.search('\d{4}', odds_file)[0]) + 1
-
-            ##Read in the odds file
-            raw_odds = pd.read_excel(os.path.join(odds_path, odds_file))
-            raw_odds.columns = raw_odds.columns.str.lower()
-
-            ##Ensure that the closing odds are numeric
-            ##Also change pick-em lines to 0
-            raw_odds['close'] = np.where(raw_odds['close'] == 'pk', 0, raw_odds['close'])
-            raw_odds['close'] = pd.to_numeric(raw_odds['close'], errors='coerce')
-
-            ##Split the team name by capital letters
-            ##i.e. TexasState to Texas State
-            raw_odds['team'] = raw_odds['team'].apply(lambda x: re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', str(x)))
-
-            ##Visitors have even numbered indices and home have odd number
-            visitors = raw_odds[::2].copy().reset_index(drop=True)
-            home = raw_odds[1::2].copy().reset_index(drop=True)
-            visitors.rename(columns={'team':'away_name', 'close':'away_close'}, inplace=True)
-            home.rename(columns={'team':'home_name', 'close':'home_close'}, inplace=True)
-            visitors = visitors[['date', 'away_name', 'away_close']]
-            home = home[['home_name', 'home_close']]
-
-            ##Merge the games into one dataframe
-            odds_subset = visitors.merge(home, left_index=True, right_index=True)
-            odds_subset.dropna(inplace=True)
-
-            ##The smaller closing line is the spread rather than the O/U
-            ##If the away team is favored, negate the line to match with normal format
-            odds_subset['close'] = np.where(odds_subset['away_close'] <= odds_subset['home_close'], -odds_subset['away_close'], odds_subset['home_close'])
-            odds_subset = odds_subset[['away_name', 'home_name', 'close', 'date']]
-            odds_subset['year'] = year
-            odds_subset['date'] = str(year) + odds_subset['date'].astype(str).str.zfill(4)
-            odds_subset['date'] = pd.to_datetime(odds_subset['date']).apply(lambda x: x.strftime('%b %d').replace(" 0", " "))
-            odds.append(odds_subset)
-
-        odds = pd.concat(odds)
-
-        ##Update team names so we can merge the odds into the main dataframe
-        odds['away_name'].replace(self.team_replace, inplace=True)
-        odds['home_name'].replace(self.team_replace, inplace=True)
-
-        return odds
-
-    def pull_current_odds(self, start_date, end_date):
-        '''
-        Pull all odds for a given timeframe
-        '''
-
-        ##We can only pull for future games
-        ##Therefore, we change the start date to today if the start_date is in the past
-        if start_date < pd.to_datetime('today'):
-            start_date = pd.to_datetime('today')
-
-        date_range = pd.date_range(start_date, end_date)
-        full_odds = []
-        for day in date_range:
-            daily_odds = self.pull_current_daily_odds(day)
-            full_odds.append(daily_odds)
-
-        full_odds = pd.concat(full_odds)
-        
-        ##Remove ranks from the team names
-        full_odds['home_name'] = full_odds['home_name'].apply(lambda x: re.sub('^\\([\\d]+\\)\\xa0', '', x))
-        full_odds['away_name'] = full_odds['away_name'].apply(lambda x: re.sub('^\\([\\d]+\\)\\xa0', '', x))
-
-        ##Update team names
-        full_odds['home_name'].replace(self.team_replace, inplace=True)
-        full_odds['away_name'].replace(self.team_replace, inplace=True)
-
-        return full_odds
-
-    def pull_current_daily_odds(self, games_date):
-        '''
-        Pull all odds for the given date from sportsbook review
-        '''
-        url = 'https://www.sportsbookreview.com/betting-odds/ncaa-basketball/' + str(games_date.date()).replace('-','')
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
-        raw_data = requests.get(url, headers=headers)
-        soup = BeautifulSoup(raw_data.text, 'html.parser')
-        if soup.find_all('div', id='OddsGridModule_14'):
-            soup = soup.find_all('div', id='OddsGridModule_14')[0]
-        else:
-            ##No games on this day
-            return pd.DataFrame(columns=['away_name', 'home_name', 'spread'])
-
-        daily_odds = self.parse_daily_odds(soup)
-
-        ##Replace pick-em with 0s
-        daily_odds['spread'] = np.where(daily_odds['spread'].str.contains('PK'), '0', daily_odds['spread'])
-
-        ##Remove the + from the spread column and convert strings to numerics
-        daily_odds['spread'] = pd.to_numeric(daily_odds['spread'].map(lambda x: x.strip('+')))
-
-        return daily_odds
-        
-
-    def parse_daily_odds(self, soup):
-        '''
-        Take the raw odds and convert to dataframe
-        '''
-        ##Initialize the dataframe
-        daily_odds = []
-        number_of_games = len(soup.find_all('div', attrs={'class': 'el-div eventLine-rotation'}))
-        for game_number in range(number_of_games):
-            away_team = soup.find_all('div', attrs={'class': 'el-div eventLine-team'})[game_number].find_all('div')[
-                0].get_text().strip()
-            home_team = soup.find_all('div', attrs={'class': 'el-div eventLine-team'})[game_number].find_all('div')[
-                1].get_text().strip()
-            ##Unibet 1244 as first choice
-            ##Use Betway 3970 as backup
-            away_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '1244'})[game_number].find_all(
-                    'div')[0].get_text().strip()
-            home_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '1244'})[game_number].find_all(
-                    'div')[1].get_text().strip()
-            if away_odds == '':
-                away_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '3970'})[game_number].find_all(
-                    'div')[0].get_text().strip()
-                home_odds = \
-                soup.find_all('div', attrs={'class': 'el-div eventLine-book', 'rel': '3970'})[game_number].find_all(
-                    'div')[1].get_text().strip()
-            ##Get the spread number only so we only need the away team's odds
-            odds = away_odds.replace(u'\xa0', ' ').replace(u'\xbd', '.5')
-            odds = odds[:odds.find(' ')]
-            if odds != '':
-                daily_odds.append({'away_name': away_team, 'home_name': home_team, 'spread': odds})
-
-        daily_odds = pd.DataFrame(daily_odds)
-        daily_odds.drop_duplicates(['away_name', 'home_name'], keep='first', inplace=True)
-        return daily_odds
-
-    def create_historical_clustering_dataframe(self, first_year=2015, last_year=2020):
-        '''
-        Compiles a complete dataframe of stats to use to train clustering model
-        Uses specified years given
-        Note: 2015 is the first available year
-        '''
-        full_data = []
-        ##Pull the historical data for each specified year
-        for year in range(first_year, last_year + 1):
-            subset = self.create_clustering_dataframe(year)
-            full_data.append(subset)
-
-        full_data = pd.concat(full_data)
-        full_data = full_data.reset_index(drop=True)
-        return full_data
+            pd.concat(full_data, ignore_index=True).to_csv(
+                "historical_cbb_data.csv", index=False
+            )
+
+        full_data = pd.concat(full_data, ignore_index=True)
+
+        if self.cbbd_api_key:
+            odds = self.pull_historical_odds(first_year, last_year)
+            if not odds.empty:
+                reversed_odds = pd.DataFrame(
+                    {
+                        "home_name": odds["away_name"],
+                        "away_name": odds["home_name"],
+                        "close": -odds["close"],
+                        "year": odds["year"],
+                        "date": odds["date"],
+                    }
+                )
+                odds = pd.concat([odds, reversed_odds], ignore_index=True).drop_duplicates(
+                    ["away_name", "home_name", "date", "year"]
+                )
+                full_data = full_data.merge(
+                    odds, on=["away_name", "home_name", "date", "year"], how="left"
+                )
+
+        full_data.to_csv("historical_cbb_data_full.csv", index=False)
+
+        model_df = full_data.drop(
+            columns=[
+                "away_abbr",
+                "home_abbr",
+                "away_name",
+                "home_name",
+                "home_score",
+                "away_score",
+                "date",
+            ]
+        )
+        model_df.to_csv("historical_cbb_data.csv", index=False)
+        return model_df
 
     def create_clustering_dataframe(self, year=None):
-        '''
-        Pull the dataframe for the given year to be used for the clustering model.
-        Stats include tempo, off/def rebounding rates, off/def foul rates, off/def 3 point rates
-        '''
-        ##Pull all of the stats needed for clustering
-        cluster_dataframe = self.pull_tempo(year)
+        specs = [
+            ("stat/possessions-per-game", "possessions_per_game", False, False),
+            ("stat/offensive-rebounding-pct", "off_rebounding_percentage", True, False),
+            ("stat/defensive-rebounding-pct", "def_rebounding_percentage", True, False),
+            ("stat/personal-fouls-per-possession", "foul_rate", True, False),
+            ("stat/opponent-personal-fouls-per-possession", "opp_foul_rate", True, False),
+            ("stat/three-point-rate", "three_point_rate", True, False),
+            ("stat/opponent-three-point-rate", "opp_three_point_rate", True, False),
+        ]
 
-        off_rebounding = self.pull_offensive_rebounding_percentage(year)
-        cluster_dataframe = cluster_dataframe.merge(off_rebounding, how='left')
+        results = {}
+        with ThreadPoolExecutor(max_workers=len(specs)) as pool:
+            future_map = {
+                pool.submit(
+                    self._fetch_team_rankings_table, path, col, year, is_pct, strip_rec
+                ): col
+                for path, col, is_pct, strip_rec in specs
+            }
+            for f in as_completed(future_map):
+                results[future_map[f]] = f.result()
 
-        def_rebounding = self.pull_defensive_rebounding_percentage(year)
-        cluster_dataframe = cluster_dataframe.merge(def_rebounding, how='left')
+        ordered_cols = [s[1] for s in specs]
+        df = results[ordered_cols[0]]
+        for col in ordered_cols[1:]:
+            df = df.merge(results[col], on="name", how="left")
 
-        foul_rate = self.pull_foul_rate(year)
-        cluster_dataframe = cluster_dataframe.merge(foul_rate, how='left')
+        df["name"] = self.normalize_team_name(df["name"])
+        df.dropna(inplace=True)
+        df[ordered_cols] = StandardScaler().fit_transform(df[ordered_cols])
+        df["year"] = year
+        return df.reset_index(drop=True)
 
-        opp_foul_rate = self.pull_opp_foul_rate(year)
-        cluster_dataframe = cluster_dataframe.merge(opp_foul_rate, how='left')
-
-        three_point_rate = self.pull_three_point_rate(year)
-        cluster_dataframe = cluster_dataframe.merge(three_point_rate, how='left')
-
-        opp_three_point_rate = self.pull_opp_three_point_rate(year)
-        cluster_dataframe = cluster_dataframe.merge(opp_three_point_rate, how='left')
-
-        ##Normalize the data
-        columns_to_norm = ['possessions_per_game', 'three_point_rate', 'opp_three_point_rate',\
-                           'foul_rate', 'opp_foul_rate', 'off_rebounding_percentage', 'def_rebounding_percentage']
-        cluster_dataframe[columns_to_norm] = StandardScaler().fit_transform(cluster_dataframe[columns_to_norm])
-
-        ##Add the year to the dataframe
-        cluster_dataframe['year'] = year
-
-        return cluster_dataframe
-
-    def pull_daily_odds_team_rankings(self):
-        """
-        Pull and parse odds from teamrankings
-        """
-        url = 'https://www.teamrankings.com/ncb/'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find_all('table', attrs={'class': 'tr-table'})[1]
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        daily_odds = []
-        for tr in table_rows:
-            td = tr.find_all('td')[0]
-            text = td.text
-            if ' at ' in text:
-                elements = text.split(' at ')
-                if re.search('\(-\d+(?:\.\d)?\)', elements[0]):
-                    away = re.split('\(-\d+(?:\.\d)?\)', elements[0])[0].strip()
-                    odds = float(re.findall('-\d+(?:\.\d)?', elements[0])[0])
-                    home = elements[1].strip()
-                elif re.search('\(-\d+(?:\.\d)?\)', elements[1]):
-                    away = elements[0].strip()
-                    home = re.split('\(-\d+(?:\.\d)?\)', elements[1])[0].strip()
-                    odds = float(re.findall('-\d+(?:\.\d)?', elements[1])[0]) * -1
-                else:
-                    away = elements[0].strip()
-                    home = elements[1].strip()
-                    odds = np.NAN
-            else:
-                elements = text.split(' vs. ')
-                if re.search('\(-\d+(?:\.\d)?\)', elements[0]):
-                    away = re.split('\(-\d+(?:\.\d)?\)', elements[0])[0].strip()
-                    odds = float(re.findall('-\d+(?:\.\d)?', elements[0])[0])
-                    home = elements[1].strip()
-                elif re.search('\(-\d+(?:\.\d)?\)', elements[1]):
-                    away = elements[0].strip()
-                    home = re.split('\(-\d+(?:\.\d)?\)', elements[1])[0].strip()
-                    odds = float(re.findall('-\d+(?:\.\d)?', elements[1])[0]) * -1
-                else:
-                    away = elements[0].strip()
-                    home = elements[1].strip()
-                    odds = np.NAN
-            daily_odds.append({'away_name': away, 'home_name': home, 'spread': odds})
-
-        daily_odds = pd.DataFrame(daily_odds)
-        daily_odds.drop_duplicates(['away_name', 'home_name'], keep='first', inplace=True)
-        ##Update team names
-        ##Update the team names to match the base
-        daily_odds['away_name'] = daily_odds['away_name'].apply(
-            lambda x: x.replace(' St', ' State') if ' State' not in x else x)
-        daily_odds['away_name'].replace(self.team_replace, inplace=True)
-        daily_odds['home_name'] = daily_odds['home_name'].apply(
-            lambda x: x.replace(' St', ' State') if ' State' not in x else x)
-        daily_odds['home_name'].replace(self.team_replace, inplace=True)
-        return daily_odds
+    def create_historical_clustering_dataframe(self, first_year=2015, last_year=2025):
+        frames = [
+            self.create_clustering_dataframe(year)
+            for year in range(first_year, last_year + 1)
+        ]
+        return pd.concat(frames, ignore_index=True)
