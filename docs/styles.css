@@ -100,3 +100,9 @@ tbody td { padding: 0.85rem 1rem; vertical-align: middle; }
   .header-meta { align-items: flex-start; }
   .controls-bar { flex-direction: column; align-items: stretch; }
 }
+
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.info-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.15rem 1.25rem; box-shadow: var(--shadow); }
+.info-card h2 { margin: 0 0 0.45rem; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.info-card p { margin: 0; font-size: 0.875rem; color: var(--text-muted); line-height: 1.55; }
+.disclaimer-card { background: var(--surface-muted); }
