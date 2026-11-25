@@ -2,8 +2,6 @@ name: Daily CBB Predictions (7 AM Pacific)
 
 on:
   schedule:
-    # 7:00 AM PDT (UTC-7) = 14:00 UTC; 7:00 AM PST (UTC-8) = 15:00 UTC.
-    # Split into two crons so github.event.schedule distinguishes PST vs PDT even if GitHub delays execution.
     - cron: "0 14 * 1-4,11-12 *"
     - cron: "0 15 * 1-4,11-12 *"
   workflow_dispatch:
@@ -71,3 +69,16 @@ jobs:
           name: cbb-predictions-${{ github.run_id }}
           path: "College Basketball/cbb_predictions.csv"
           retention-days: 14
+
+      - name: Publish updated predictions to GitHub Pages
+        if: steps.tz_check.outputs.should_run == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/
+          if ! git diff --cached --quiet; then
+            git commit -m "Update daily CBB predictions ($(TZ='America/Los_Angeles' date +%Y-%m-%d))"
+            git push
+          else
+            echo "No changes in docs/data/ to commit."
+          fi

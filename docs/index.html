@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily College Basketball Spread Predictions | BMA Ensemble</title>
+  <meta
+    name="description"
+    content="Daily NCAA Division I college basketball spread predictions powered by a 12-season Bayesian Model Averaging ensemble (LASSO, Random Forest, XGBoost, SVR)."
+  />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">NCAA Men's Basketball · BMA Ensemble</p>
+        <h1>Daily Spread Predictions</h1>
+        <p class="subtitle">
+          Updated automatically every morning at 7:00 AM PT using KenPom, TeamRankings, rest-day
+          adjustments, and live Vegas spreads. Positive spreads favor the home team.
+        </p>
+      </div>
+
+      <div class="header-meta">
+        <label class="date-picker-wrap" for="date-select">
+          <span>Slate:</span>
+          <select id="date-select" class="date-select">
+            <option value="data/latest.json">Latest Slate</option>
+          </select>
+        </label>
+        <p id="updated-text" class="updated-text">Loading...</p>
+      </div>
+    </header>
+
+    <section class="summary-grid" aria-label="Slate summary">
+      <article class="stat-card">
+        <p class="stat-label">D1 Games on Slate</p>
+        <p id="stat-total" class="stat-value mono">—</p>
+        <p class="stat-sub">Upcoming Division I matchups</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">Games with Vegas Line</p>
+        <p id="stat-odds" class="stat-value mono">—</p>
+        <p class="stat-sub">DraftKings / ESPN pregame spreads</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">Largest Model Edge</p>
+        <p id="stat-top-edge" class="stat-value mono">—</p>
+        <p id="stat-top-matchup" class="stat-sub">—</p>
+      </article>
+    </section>
+
+    <section class="controls-bar" aria-label="Filter and search controls">
+      <div class="search-wrap">
+        <input
+          id="team-search"
+          class="search-input"
+          type="search"
+          placeholder="Search team (e.g. Duke, Kansas, Gonzaga)..."
+          aria-label="Search by team name"
+        />
+      </div>
+
+      <div class="filter-pills" role="group" aria-label="Quick filters">
+        <button class="pill-btn active" data-filter="all" type="button">All Games</button>
+        <button class="pill-btn" data-filter="odds" type="button">Has Spread</button>
+        <button class="pill-btn" data-filter="high-edge" type="button">Edge ≥ 2.0</button>
+        <button class="pill-btn" data-filter="neutral" type="button">Neutral Site</button>
+      </div>
+
+      <label class="slider-wrap" for="min-edge-slider">
+        <span>Min Edge:</span>
+        <input id="min-edge-slider" type="range" min="0" max="10" step="0.5" value="0" />
+        <span id="min-edge-val" class="mono">0.0 pts</span>
+      </label>
+    </section>
+
+    <main class="table-card">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" data-sort="away_name">Matchup</th>
+              <th>Site</th>
+              <th class="sortable" data-sort="spread">Vegas (+ Home)</th>
+              <th class="sortable" data-sort="prediction">Model (+ Home)</th>
+              <th class="sortable" data-sort="abs_edge">Edge (Pred - Line)</th>
+              <th>Model Lean</th>
+            </tr>
+          </thead>
+          <tbody id="predictions-body">
+            <tr>
+              <td colspan="6" class="empty-state">Loading predictions...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <span>Ensemble: LASSO · Random Forest · XGBoost · SVR (EM-BMA, 2015–2026)</span>
+      <a href="https://github.com/cbartok/sports_models" target="_blank" rel="noopener">
+        View Source on GitHub
+      </a>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

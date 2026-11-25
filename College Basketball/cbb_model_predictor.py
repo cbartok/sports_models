@@ -73,18 +73,12 @@ def upload_to_google_sheets(
     sheet_name="CBB Model Predictions",
     worksheet_name="Today's Predictions",
 ):
-    """
-    Upload predictions DataFrame to a Google Sheet using either:
-      - GOOGLE_SERVICE_ACCOUNT_JSON env var (for GitHub Actions), or
-      - ../google.json service account file (for local runs).
-    """
+    """Upload predictions DataFrame to a Google Sheet."""
     sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     key_path = os.path.join(os.path.dirname(os.getcwd()), "google.json")
 
     if not sa_json and not os.path.exists(key_path):
-        print(
-            "Skipping Google Sheets upload (set GOOGLE_SERVICE_ACCOUNT_JSON or place google.json in repo root)."
-        )
+        print("Skipping Google Sheets upload (set GOOGLE_SERVICE_ACCOUNT_JSON or place google.json in repo root).")
         return False
 
     import gspread
@@ -129,11 +123,53 @@ def upload_to_google_sheets(
     return True
 
 
+def export_github_pages_json(results_df, target_date=None, data_dir="../docs/data"):
+    """Write latest.json, YYYY-MM-DD.json, and dates.json for the GitHub Pages dashboard."""
+    if not data_dir:
+        return None
+    os.makedirs(data_dir, exist_ok=True)
+
+    now_pt = datetime.now(PACIFIC_TZ)
+    slate_date = (
+        pd.to_datetime(target_date).strftime("%Y-%m-%d")
+        if target_date
+        else now_pt.strftime("%Y-%m-%d")
+    )
+
+    records = json.loads(results_df.copy().to_json(orient="records"))
+    payload = {
+        "slate_date": slate_date,
+        "updated_at": now_pt.strftime("%Y-%m-%d %I:%M %p %Z"),
+        "games": records,
+    }
+
+    latest_path = os.path.join(data_dir, "latest.json")
+    dated_path = os.path.join(data_dir, f"{slate_date}.json")
+    for path in (latest_path, dated_path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+    dates = sorted(
+        [
+            fn[:-5]
+            for fn in os.listdir(data_dir)
+            if fn.endswith(".json") and fn not in ("latest.json", "dates.json")
+        ],
+        reverse=True,
+    )
+    with open(os.path.join(data_dir, "dates.json"), "w", encoding="utf-8") as f:
+        json.dump(dates, f, indent=2)
+
+    print(f"Exported {len(records)} games to {latest_path} and {dated_path}.")
+    return latest_path
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run daily CBB spread predictions.")
     parser.add_argument("--date", default=None, help="Target date (YYYY-MM-DD). Defaults to today (Pacific).")
     parser.add_argument("--model", default="cbb_model.pickle", help="Path to saved EnsembleModel pickle.")
     parser.add_argument("--output", default="cbb_predictions.csv", help="Output CSV path.")
+    parser.add_argument("--json-dir", default="../docs/data", help="Directory for GitHub Pages JSON output.")
     parser.add_argument("--sheet-id", default=None, help="Google Sheet ID (or set GOOGLE_SHEET_ID env var).")
     parser.add_argument("--sheet-name", default="CBB Model Predictions", help="Google Sheet title if no ID provided.")
     parser.add_argument("--no-sheets", action="store_true", help="Skip Google Sheets upload.")
@@ -145,6 +181,8 @@ if __name__ == "__main__":
     print(f"\nPredictions for {args.date or 'today (PT)'} ({len(preds_df)} games):")
     if not preds_df.empty:
         print(preds_df.to_string(index=False))
+    if args.json_dir:
+        export_github_pages_json(preds_df, target_date=args.date, data_dir=args.json_dir)
     if not args.no_sheets:
         upload_to_google_sheets(
             preds_df, sheet_id=args.sheet_id, sheet_name=args.sheet_name
