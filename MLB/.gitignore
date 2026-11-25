@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+cache/
+projections/*.csv
+.DS_Store
