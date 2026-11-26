@@ -2,8 +2,8 @@ name: Daily CBB Predictions (7 AM Pacific)
 
 on:
   schedule:
-    - cron: "0 14 * 1-4,11-12 *"
-    - cron: "0 15 * 1-4,11-12 *"
+    - cron: "13 14 * 1-4,11-12 *"
+    - cron: "13 15 * 1-4,11-12 *"
   workflow_dispatch:
     inputs:
       target_date:
