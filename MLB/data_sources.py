@@ -1,7 +1,7 @@
 """
 Data loaders & daily cache for the MLB Win-Probability Model.
 Sources:
-  1. Official MLB Stats API (schedules, boxscores, rosters, L/R splits, handedness)
+  1. Official MLB Stats API (schedules, boxscores, rosters, L/R splits, handedness, projected lineups)
   2. Baseball Savant CSV leaderboards (xwOBA, xERA, Baserunning, OAA, Catcher Framing)
   3. Optional local FanGraphs CSV exports (Steamer / ATC / ZiPS) if placed in ./projections/
 """
@@ -194,3 +194,50 @@ def get_all_recent_pitch_loads(target_date: str) -> dict[int, dict]:
         pid: {"pitches": pitches_by_pid[pid], "days_pitched": len(dates_by_pid.get(pid, set()))}
         for pid in pitches_by_pid
     }
+
+
+def get_projected_lineup_for_team(
+    team_id: int,
+    target_date: str,
+    opp_hand: str = "R",
+    lookback_days: int = 10,
+) -> tuple[list[int], dict]:
+    dt = datetime.strptime(target_date, "%Y-%m-%d")
+    start = (dt - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    end = (dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    url = f"{BASE_URL}/schedule?sportId=1&teamId={team_id}&startDate={start}&endDate={end}&hydrate=probablePitcher"
+    sched = SESSION.get(url, timeout=15).json()
+
+    recent_games = []
+    for d in sched.get("dates", []):
+        for g in d.get("games", []):
+            if g.get("status", {}).get("abstractGameState") == "Final":
+                recent_games.append(g)
+
+    recent_games.reverse()
+    fallback_lineup: tuple[list[int], dict] | None = None
+
+    for g in recent_games:
+        pk = g["gamePk"]
+        box = SESSION.get(f"{BASE_URL}/game/{pk}/boxscore", timeout=15).json()
+        side = "home" if box["teams"]["home"]["team"]["id"] == team_id else "away"
+        opp_side = "away" if side == "home" else "home"
+
+        t_box = box["teams"][side]
+        order = t_box.get("battingOrder", [])[:9]
+        if len(order) < 9:
+            continue
+
+        players = t_box.get("players", {})
+        if fallback_lineup is None:
+            fallback_lineup = (order, players)
+
+        opp_pitchers = box["teams"][opp_side].get("pitchers", [])
+        if opp_pitchers:
+            opp_sp_id = opp_pitchers[0]
+            p_resp = SESSION.get(f"{BASE_URL}/people/{opp_sp_id}", timeout=10).json()
+            opp_sp_hand = p_resp.get("people", [{}])[0].get("pitchHand", {}).get("code", "R")
+            if opp_sp_hand == opp_hand:
+                return order, players
+
+    return fallback_lineup if fallback_lineup is not None else ([], {})

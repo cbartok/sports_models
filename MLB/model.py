@@ -1,17 +1,21 @@
 """
-Upgraded MLB Win-Probability & Fair-Odds Model (v2)
+MLB Win-Probability & Fair-Odds Model (v2)
 """
 
 import argparse
 import math
+import time
+from datetime import date, datetime
 from data_sources import (
     BASE_URL,
     SESSION,
     fetch_people_platoon_and_meta,
     get_all_recent_pitch_loads,
+    get_projected_lineup_for_team,
     load_fangraphs_projections,
     load_savant_data,
 )
+from odds import calc_ev, calc_kelly_fraction, fetch_espn_mlb_odds, fetch_live_mlb_odds, strip_vig
 
 LG_RUNS_PER_GAME = 4.45
 LG_RUNS_PER_PA = 0.118
@@ -223,12 +227,11 @@ def estimate_sp_expected_innings(pid: int, pitch_stats: dict, fg_proj: dict) -> 
     return max(3.0, min(6.6, reg_ip_gs))
 
 
-def estimate_team_defense_raa(t_box: dict, savant: dict) -> float:
-    batting_order = t_box.get("battingOrder", [])[:9]
+def estimate_team_defense_raa(batting_order: list[int], players_dict: dict, savant: dict) -> float:
     def_raa_game = 0.0
 
-    for pid in batting_order:
-        p_data = t_box["players"].get(f"ID{pid}", {})
+    for pid in batting_order[:9]:
+        p_data = players_dict.get(f"ID{pid}", {})
         pos = p_data.get("position", {}).get("abbreviation", "")
         if pos == "DH":
             continue
@@ -377,7 +380,19 @@ def to_american_odds(prob: float) -> str:
     return f"+{round(100 * (1 - prob) / prob)}"
 
 
-def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
+def run_date(
+    target_date: str,
+    bulk_overrides: dict[str, str] | None = None,
+    use_odds: bool = False,
+    odds_source: str = "espn",
+    mock_odds: bool = False,
+    min_ev: float = 0.025,
+    kelly_mult: float = 0.25,
+    prev_confirmed_pks: set[int] | None = None,
+) -> tuple[set[int], int]:
+    if target_date.lower() == "today":
+        target_date = date.today().strftime("%Y-%m-%d")
+
     bulk_overrides = {k.upper(): v for k, v in (bulk_overrides or {}).items()}
     season = int(target_date[:4])
     print(f"Loading Baseball Savant leaderboards & FanGraphs projections (if present) for {season}...")
@@ -391,9 +406,13 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
     print(f"  FanGraphs CSVs: {fg_status}")
 
     sched = SESSION.get(
-        f"{BASE_URL}/schedule?sportId=1&date={target_date}&hydrate=venue", timeout=20
+        f"{BASE_URL}/schedule?sportId=1&date={target_date}&hydrate=venue,probablePitcher", timeout=20
     ).json()
     games = sched.get("dates", [{}])[0].get("games", [])
+    if not games:
+        print(f"No MLB games found for {target_date}.")
+        return set(), 0
+
     recent_loads = get_all_recent_pitch_loads(target_date)
 
     boxes = []
@@ -407,19 +426,27 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
             all_pids.extend(t_box.get("battingOrder", [])[:9])
             if t_box.get("pitchers"):
                 all_pids.append(t_box["pitchers"][0])
+            else:
+                prob_sp = g.get("teams", {}).get(side, {}).get("probablePitcher", {})
+                if prob_sp.get("id"):
+                    all_pids.append(prob_sp["id"])
 
     people_meta = fetch_people_platoon_and_meta(all_pids, season)
 
     print(f"\n=== MLB Model v2 Projections for {target_date} ({len(games)} games) ===\n")
     print(
-        f"{'Matchup':<22} {'SPs (Exp IP)':<38} {'Off(A/H)':<13} {'Def(A/H)':<13} "
+        f"{'Matchup':<28} {'SPs (Exp IP)':<38} {'Off(A/H)':<13} {'Def(A/H)':<13} "
         f"{'Exp R (A-H)':<13} {'Home%':<7} {'Fair Odds (A/H)':<16} {'Actual'}"
     )
-    print("-" * 140)
+    print("-" * 146)
 
     roster_cache: dict[int, list[dict]] = {}
+    proj_lineup_cache: dict[tuple[int, str], tuple[list[int], dict]] = {}
+    game_results = []
+    confirmed_pks: set[int] = set()
 
     for g, box in boxes:
+        pk = g["gamePk"]
         venue_name = g.get("venue", {}).get("name", "")
         pf = PARK_FACTORS.get(venue_name, 1.00)
 
@@ -432,16 +459,27 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
             if tid not in roster_cache:
                 roster_cache[tid] = fetch_team_pitching_roster(tid, season)
             roster = roster_cache[tid]
+            roster_by_id = {p["id"]: p for p in roster}
 
             pitchers = t_box.get("pitchers", [])
-            sp_id = pitchers[0] if pitchers else None
+            prob_sp = g.get("teams", {}).get(side, {}).get("probablePitcher", {})
+            sp_id = pitchers[0] if pitchers else prob_sp.get("id")
+
             sp_name, sp_rate, sp_ip, is_opener = "TBD", LG_ERA_FIP, 5.30, False
             sp_hand = people_meta.get(sp_id, {}).get("pitchHand", "R") if sp_id else "R"
 
             if sp_id:
                 sp_data = t_box["players"].get(f"ID{sp_id}", {})
-                sp_name = sp_data.get("person", {}).get("fullName", "TBD").split()[-1]
-                sp_stats = sp_data.get("seasonStats", {}).get("pitching", {})
+                if sp_data and sp_data.get("seasonStats", {}).get("pitching"):
+                    sp_name = sp_data.get("person", {}).get("fullName", "TBD").split()[-1]
+                    sp_stats = sp_data["seasonStats"]["pitching"]
+                elif sp_id in roster_by_id:
+                    sp_name = roster_by_id[sp_id]["fullName"].split()[-1]
+                    sp_stats = roster_by_id[sp_id]["stat"]
+                else:
+                    sp_name = prob_sp.get("fullName", "TBD").split()[-1]
+                    sp_stats = {}
+
                 is_opener = is_opener_pitcher(sp_stats)
                 sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0)
                 sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj)
@@ -474,6 +512,7 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
                 sp_label = f"{sp_name}({sp_ip:.1f}/OP)" if is_opener else f"{sp_name}({sp_ip:.1f})"
 
             pitching_plans[side] = {
+                "tid": tid,
                 "abbr": t_abbr,
                 "pitch_raa_allowed": pitch_raa_allowed,
                 "primary_hand": primary_hand,
@@ -483,20 +522,37 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
         team_metrics = {}
         for side in ("away", "home"):
             opp_side = "home" if side == "away" else "away"
+            opp_hand = pitching_plans[opp_side]["primary_hand"]
             t_box = box["teams"][side]
+            tid = pitching_plans[side]["tid"]
 
-            batting_order = t_box.get("battingOrder", [])[:9]
+            official_order = t_box.get("battingOrder", [])[:9]
+            if len(official_order) >= 9:
+                is_official = True
+                batting_order = official_order
+                players_dict = t_box.get("players", {})
+            else:
+                is_official = False
+                cache_key = (tid, opp_hand)
+                if cache_key not in proj_lineup_cache:
+                    proj_lineup_cache[cache_key] = get_projected_lineup_for_team(tid, target_date, opp_hand)
+                batting_order, players_dict = proj_lineup_cache[cache_key]
+
+                missing_pids = [pid for pid in batting_order if pid not in people_meta]
+                if missing_pids:
+                    people_meta.update(fetch_people_platoon_and_meta(missing_pids, season))
+
             off_raa = 0.0
             for idx, pid in enumerate(batting_order):
-                p_data = t_box["players"].get(f"ID{pid}", {})
+                p_data = players_dict.get(f"ID{pid}", {})
                 bat_stats = p_data.get("seasonStats", {}).get("batting", {})
                 raa_pa = estimate_batter_raa_per_pa(
-                    pid, bat_stats, pitching_plans[opp_side]["primary_hand"], people_meta, savant, fg_proj
+                    pid, bat_stats, opp_hand, people_meta, savant, fg_proj
                 )
                 pa_weight = PA_BY_SPOT[idx] if idx < 9 else 3.85
                 off_raa += pa_weight * raa_pa
 
-            def_raa = estimate_team_defense_raa(t_box, savant)
+            def_raa = estimate_team_defense_raa(batting_order, players_dict, savant)
             actual_runs = t_box.get("teamStats", {}).get("batting", {}).get("runs", "-")
 
             team_metrics[side] = {
@@ -506,9 +562,13 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
                 "def_raa": def_raa,
                 "sp_label": pitching_plans[side]["sp_label"],
                 "actual_runs": actual_runs,
+                "is_official": is_official,
             }
 
         away_m, home_m = team_metrics["away"], team_metrics["home"]
+        both_official = away_m["is_official"] and home_m["is_official"]
+        if both_official:
+            confirmed_pks.add(pk)
 
         rs_away = max(
             1.5,
@@ -525,7 +585,8 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
         p_home = 1.0 / (1.0 + math.exp(-logit_home))
         p_away = 1.0 - p_home
 
-        matchup_str = f"{away_m['abbr']} @ {home_m['abbr']} ({pf:.2f})"
+        status_tag = "[OFF]" if both_official else "[PROJ]"
+        matchup_str = f"{status_tag} {away_m['abbr']} @ {home_m['abbr']} ({pf:.2f})"
         sp_str = f"{away_m['sp_label']} v {home_m['sp_label']}"
         off_str = f"{away_m['off_raa']:+.2f}/{home_m['off_raa']:+.2f}"
         def_str = f"{away_m['def_raa']:+.2f}/{home_m['def_raa']:+.2f}"
@@ -534,20 +595,137 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
         actual_str = f"{away_m['actual_runs']} - {home_m['actual_runs']}"
 
         print(
-            f"{matchup_str:<22} {sp_str:<38} {off_str:<13} {def_str:<13} "
+            f"{matchup_str:<28} {sp_str:<38} {off_str:<13} {def_str:<13} "
             f"{exp_r_str:<13} {p_home*100:>5.1f}%  {odds_str:<16} {actual_str}"
         )
+
+        game_results.append({
+            "game_pk": pk,
+            "away": away_m["abbr"],
+            "home": home_m["abbr"],
+            "p_away": p_away,
+            "p_home": p_home,
+            "both_official": both_official,
+        })
+
+    official_games = [gr for gr in game_results if gr["both_official"]]
+    new_official_pks = confirmed_pks - (prev_confirmed_pks or set())
+
+    if use_odds or mock_odds:
+        if not official_games:
+            print("\nSkipping odds fetch: no games have official lineups posted for both teams yet.")
+            return confirmed_pks, len(games)
+
+        if prev_confirmed_pks is not None and not new_official_pks:
+            print("\nNo new official lineups since last check; skipping odds fetch.")
+            return confirmed_pks, len(games)
+
+        odds_map = {}
+        if use_odds:
+            odds_map = fetch_live_mlb_odds() if odds_source == "oddsapi" else fetch_espn_mlb_odds(target_date)
+        elif mock_odds:
+            for idx, gr in enumerate(official_games[:5]):
+                shift = 0.045 if idx % 2 == 0 else -0.045
+                mkt_h = max(0.20, min(0.80, gr["p_home"] - shift))
+                mkt_a = 1.0 - mkt_h
+                a_am = int(to_american_odds(min(0.95, mkt_a + 0.02)))
+                h_am = int(to_american_odds(min(0.95, mkt_h + 0.02)))
+                nv_a, nv_h = strip_vig(a_am, h_am)
+                odds_map[(gr["away"], gr["home"])] = {
+                    "best_away": (a_am, "MockBook"),
+                    "best_home": (h_am, "MockBook"),
+                    "no_vig_away": nv_a,
+                    "no_vig_home": nv_h,
+                    "sharp_source": "MockSharp",
+                }
+
+        print(
+            f"\n=== +EV Value Plays [Official Lineups Only: {len(official_games)}/{len(games)} games] "
+            f"(EV >= {min_ev*100:.1f}%, Kelly: {kelly_mult:.2f}x) ===\n"
+        )
+        print(
+            f"{'Bet':<18} {'Model%':<9} {'Fair':<8} {'Book Line':<22} "
+            f"{'Mkt No-Vig%':<13} {'EV%':<9} {'Kelly Stake'}"
+        )
+        print("-" * 92)
+
+        plays = []
+        for gr in official_games:
+            mkt = odds_map.get((gr["away"], gr["home"]))
+            if not mkt:
+                continue
+            for side_label, prob, best_pair, nv_prob in [
+                (f"{gr['away']} (@ {gr['home']})", gr["p_away"], mkt["best_away"], mkt["no_vig_away"]),
+                (f"{gr['home']} (vs {gr['away']})", gr["p_home"], mkt["best_home"], mkt["no_vig_home"]),
+            ]:
+                book_odds, book_name = best_pair
+                ev = calc_ev(prob, book_odds)
+                if ev >= min_ev:
+                    stake = calc_kelly_fraction(prob, book_odds, kelly_mult=kelly_mult)
+                    plays.append((ev, side_label, prob, to_american_odds(prob), book_odds, book_name, nv_prob, stake))
+
+        plays.sort(key=lambda x: x[0], reverse=True)
+        if not plays:
+            print("No official-lineup plays met the minimum EV threshold.")
+        else:
+            for ev, side_label, prob, fair, book_odds, book_name, nv_prob, stake in plays:
+                line_str = f"{book_odds:+d} ({book_name})"
+                print(
+                    f"{side_label:<18} {prob*100:>5.1f}%    {fair:<8} {line_str:<22} "
+                    f"{nv_prob*100:>5.1f}%        {ev*100:>+5.2f}%   {stake*100:>5.2f}% bankroll"
+                )
+
+    return confirmed_pks, len(games)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run MLB Win-Probability Model v2 for a given date.")
-    parser.add_argument("--date", default="2026-07-04", help="Date in YYYY-MM-DD format")
+    parser.add_argument("--date", default="2026-07-04", help="Date in YYYY-MM-DD format or 'today'")
     parser.add_argument(
         "--bulk",
         action="append",
         default=[],
         help="Optional bulk pitcher override, e.g. --bulk TB=Bradley (repeatable)",
     )
+    parser.add_argument("--odds", action="store_true", help="Fetch MLB odds when official lineups drop (free ESPN DraftKings default)")
+    parser.add_argument("--odds-source", choices=["espn", "oddsapi"], default="espn", help="Odds provider: espn (free, no key) or oddsapi")
+    parser.add_argument("--mock-odds", action="store_true", help="Use synthetic odds to test the +EV / Kelly table")
+    parser.add_argument("--min-ev", type=float, default=0.025, help="Minimum EV threshold to flag plays (default: 0.025 = 2.5%%)")
+    parser.add_argument("--kelly", type=float, default=0.25, help="Fractional Kelly multiplier (default: 0.25 = Quarter-Kelly)")
+    parser.add_argument("--watch", type=int, default=0, help="Re-run every N minutes until all lineups are official (0 = run once)")
     args = parser.parse_args()
     bulk_map = dict(item.split("=", 1) for item in args.bulk if "=" in item)
-    run_date(args.date, bulk_overrides=bulk_map)
+
+    if args.watch <= 0:
+        run_date(
+            args.date,
+            bulk_overrides=bulk_map,
+            use_odds=args.odds,
+            odds_source=args.odds_source,
+            mock_odds=args.mock_odds,
+            min_ev=args.min_ev,
+            kelly_mult=args.kelly,
+        )
+    else:
+        confirmed: set[int] | None = None
+        try:
+            while True:
+                now_str = datetime.now().strftime("%H:%M:%S")
+                print(f"\n[{now_str}] Polling MLB lineups (interval: {args.watch} min)...")
+                confirmed, total_games = run_date(
+                    args.date,
+                    bulk_overrides=bulk_map,
+                    use_odds=args.odds,
+                    odds_source=args.odds_source,
+                    mock_odds=args.mock_odds,
+                    min_ev=args.min_ev,
+                    kelly_mult=args.kelly,
+                    prev_confirmed_pks=confirmed,
+                )
+                if total_games > 0 and len(confirmed) >= total_games:
+                    print(f"\nAll {total_games}/{total_games} games have official lineups. Exiting watch mode.")
+                    break
+                print(f"\nConfirmed official lineups: {len(confirmed)}/{total_games}. Sleeping {args.watch} min...")
+                time.sleep(args.watch * 60)
+        except KeyboardInterrupt:
+            print("\nStopped watch mode.")
