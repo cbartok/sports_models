@@ -97,7 +97,7 @@ def calc_raw_woba(bat_stats: dict) -> tuple[float, int]:
     return num / denom, denom
 
 
-def calc_regressed_fip(pitch_stats: dict, prior_ip: float = 40.0) -> tuple[float, float]:
+def calc_regressed_fip(pitch_stats: dict, prior_ip: float = 60.0) -> tuple[float, float]:
     if not pitch_stats:
         return LG_ERA_FIP, 0.0
     ip = parse_ip(pitch_stats.get("inningsPitched", "0"))
@@ -109,6 +109,7 @@ def calc_regressed_fip(pitch_stats: dict, prior_ip: float = 40.0) -> tuple[float
     so = pitch_stats.get("strikeOuts", 0)
 
     raw_fip = ((13 * hr + 3 * (bb + hbp) - 2 * so) / ip) + FIP_CONSTANT
+    raw_fip = max(1.50, min(7.50, raw_fip))
     reg_fip = (ip * raw_fip + prior_ip * LG_ERA_FIP) / (ip + prior_ip)
     return reg_fip, ip
 
@@ -128,9 +129,11 @@ def estimate_batter_raa_per_pa(
         bsr_per_pa = fg["bsr"] / max(100.0, fg["pa"])
     else:
         raw_woba, denom_pa = calc_raw_woba(bat_stats)
+        raw_woba = max(0.150, min(0.550, raw_woba))
         sav = savant["bat_xwoba"].get(pid)
         if sav and sav["pa"] > 0:
             blended_raw = 0.60 * sav["xwoba"] + 0.40 * sav["woba"]
+            blended_raw = max(0.150, min(0.550, blended_raw))
             pa = sav["pa"]
             base_woba = (pa * blended_raw + 150.0 * LG_WOBA) / (pa + 150.0)
         else:
@@ -148,6 +151,7 @@ def estimate_batter_raa_per_pa(
     split_stat = meta.get("splits", {}).get(split_key)
     if split_stat:
         split_woba, split_pa = calc_raw_woba(split_stat)
+        split_woba = max(0.150, min(0.550, split_woba))
         obs_delta = split_woba - base_woba
         platoon_delta = (split_pa * obs_delta + 500.0 * prior_delta) / (split_pa + 500.0)
     else:
@@ -163,7 +167,7 @@ def estimate_pitcher_run_rate(
     pitch_stats: dict,
     savant: dict,
     fg_proj: dict,
-    prior_ip: float = 40.0,
+    prior_ip: float = 60.0,
 ) -> float:
     if pid in fg_proj["pit"]:
         return fg_proj["pit"][pid]["siera"]
@@ -172,7 +176,8 @@ def estimate_pitcher_run_rate(
     sav = savant["pit_xera"].get(pid)
     if sav and sav["pa"] > 0:
         sav_ip_equiv = sav["pa"] / 4.25
-        reg_xera = (sav_ip_equiv * sav["xera"] + prior_ip * LG_ERA_FIP) / (sav_ip_equiv + prior_ip)
+        clamped_xera = max(1.50, min(7.50, sav["xera"]))
+        reg_xera = (sav_ip_equiv * clamped_xera + prior_ip * LG_ERA_FIP) / (sav_ip_equiv + prior_ip)
         return 0.50 * reg_xera + 0.50 * reg_fip
     return reg_fip
 
@@ -185,7 +190,7 @@ def is_opener_pitcher(pitch_stats: dict) -> bool:
     ip = parse_ip(pitch_stats.get("inningsPitched", "0"))
     if gp >= 10 and gs <= gp * 0.25:
         return True
-    if gs >= 2 and ip > 0:
+    if gs >= 4 and ip > 0:
         relief_apps = max(0, gp - gs)
         est_start_ip = max(0.0, ip - 1.25 * relief_apps)
         if (est_start_ip / gs) < 3.0:
@@ -438,7 +443,7 @@ def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
                 sp_name = sp_data.get("person", {}).get("fullName", "TBD").split()[-1]
                 sp_stats = sp_data.get("seasonStats", {}).get("pitching", {})
                 is_opener = is_opener_pitcher(sp_stats)
-                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=40.0)
+                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0)
                 sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj)
 
             manual_bulk = bulk_overrides.get(t_abbr)
