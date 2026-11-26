@@ -1,0 +1,168 @@
+{
+  "slate_date": "2026-11-26",
+  "updated_at": "2026-11-26 12:17 PM PST",
+  "games": [
+    {
+      "date": "Nov 26",
+      "away_name": "Alabama",
+      "home_name": "Kansas State",
+      "neutral": 1,
+      "spread": -13.5,
+      "prediction": -11.98,
+      "difference": 1.52
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Arizona State",
+      "home_name": "South Carolina",
+      "neutral": 1,
+      "spread": null,
+      "prediction": -2.44,
+      "difference": null
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Arkansas",
+      "home_name": "Michigan State",
+      "neutral": 1,
+      "spread": 5.5,
+      "prediction": 5.92,
+      "difference": 0.42
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Baylor",
+      "home_name": "Gonzaga",
+      "neutral": 1,
+      "spread": 3.5,
+      "prediction": 1.6,
+      "difference": -1.9
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Boston College",
+      "home_name": "UCF",
+      "neutral": 1,
+      "spread": null,
+      "prediction": 3.76,
+      "difference": null
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "DePaul",
+      "home_name": "Pitt",
+      "neutral": 1,
+      "spread": -1.5,
+      "prediction": -0.2,
+      "difference": 1.3
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Georgetown",
+      "home_name": "Texas",
+      "neutral": 1,
+      "spread": null,
+      "prediction": 10.6,
+      "difference": null
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Jacksonville State",
+      "home_name": "UC-Davis",
+      "neutral": 1,
+      "spread": -3.5,
+      "prediction": -1.04,
+      "difference": 2.46
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Louisville",
+      "home_name": "St. John's (NY)",
+      "neutral": 1,
+      "spread": 1.5,
+      "prediction": 3.31,
+      "difference": 1.81
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Maryland",
+      "home_name": "San Diego State",
+      "neutral": 1,
+      "spread": null,
+      "prediction": -1.69,
+      "difference": null
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Miami (FL)",
+      "home_name": "Michigan",
+      "neutral": 1,
+      "spread": -1.5,
+      "prediction": -2.71,
+      "difference": -1.21
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Pacific",
+      "home_name": "Omaha",
+      "neutral": 1,
+      "spread": -7.5,
+      "prediction": -9.59,
+      "difference": -2.09
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "SMU",
+      "home_name": "LSU",
+      "neutral": 1,
+      "spread": 7.5,
+      "prediction": 7.1,
+      "difference": -0.4
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Saint Mary's",
+      "home_name": "UCLA",
+      "neutral": 1,
+      "spread": 7.5,
+      "prediction": 9.27,
+      "difference": 1.77
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "TCU",
+      "home_name": "Creighton",
+      "neutral": 1,
+      "spread": 1.5,
+      "prediction": 2.05,
+      "difference": 0.55
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Tennessee",
+      "home_name": "Iowa State",
+      "neutral": 1,
+      "spread": 5.5,
+      "prediction": 0.92,
+      "difference": -4.58
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Texas Tech",
+      "home_name": "Oregon",
+      "neutral": 1,
+      "spread": -10.5,
+      "prediction": -8.95,
+      "difference": 1.55
+    },
+    {
+      "date": "Nov 26",
+      "away_name": "Utah State",
+      "home_name": "USC",
+      "neutral": 1,
+      "spread": 1.5,
+      "prediction": 0.89,
+      "difference": -0.61
+    }
+  ]
+}
