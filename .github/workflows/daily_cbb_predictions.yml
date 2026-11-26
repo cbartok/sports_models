@@ -23,8 +23,8 @@ jobs:
           SCHED="${{ github.event.schedule }}"
           echo "Pacific TZ: $TZ_ABBR | Schedule: $SCHED"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
-             { [ "$TZ_ABBR" = "PST" ] && [ "$SCHED" = "0 15 * 1-4,11-12 *" ]; } || \
-             { [ "$TZ_ABBR" = "PDT" ] && [ "$SCHED" = "0 14 * 1-4,11-12 *" ]; }; then
+             { [ "$TZ_ABBR" = "PST" ] && [ "$SCHED" = "13 15 * 1-4,11-12 *" ]; } || \
+             { [ "$TZ_ABBR" = "PDT" ] && [ "$SCHED" = "13 14 * 1-4,11-12 *" ]; }; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"
