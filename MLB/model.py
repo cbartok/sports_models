@@ -177,7 +177,26 @@ def estimate_pitcher_run_rate(
     return reg_fip
 
 
+def is_opener_pitcher(pitch_stats: dict) -> bool:
+    if not pitch_stats:
+        return False
+    gp = pitch_stats.get("gamesPlayed", 0)
+    gs = pitch_stats.get("gamesStarted", 0)
+    ip = parse_ip(pitch_stats.get("inningsPitched", "0"))
+    if gp >= 10 and gs <= gp * 0.25:
+        return True
+    if gs >= 2 and ip > 0:
+        relief_apps = max(0, gp - gs)
+        est_start_ip = max(0.0, ip - 1.25 * relief_apps)
+        if (est_start_ip / gs) < 3.0:
+            return True
+    return False
+
+
 def estimate_sp_expected_innings(pid: int, pitch_stats: dict, fg_proj: dict) -> float:
+    if is_opener_pitcher(pitch_stats):
+        return 1.67
+
     prior_ip_per_gs = 5.30
     prior_gs = 5.0
 
@@ -221,28 +240,103 @@ def estimate_team_defense_raa(t_box: dict, savant: dict) -> float:
     return def_raa_game
 
 
-def get_team_bullpen_rate(
-    team_id: int,
-    season: int,
-    fatigued_loads: dict[int, dict],
-    savant: dict,
-    fg_proj: dict,
-) -> float:
+def fetch_team_pitching_roster(team_id: int, season: int) -> list[dict]:
     url = f"{BASE_URL}/teams/{team_id}/roster?rosterType=active&hydrate=person(stats(type=season,season={season},group=pitching))"
     data = SESSION.get(url, timeout=15).json()
-
-    weighted_sum = 0.0
-    total_weight = 0.0
-
+    pitchers = []
     for entry in data.get("roster", []):
         if entry.get("position", {}).get("abbreviation") != "P":
             continue
         person = entry.get("person", {})
-        pid = person.get("id")
         stats_list = person.get("stats", [])
-        if not stats_list or not stats_list[0].get("splits"):
+        p_stat = stats_list[0]["splits"][0].get("stat", {}) if (stats_list and stats_list[0].get("splits")) else {}
+        pitchers.append({
+            "id": person.get("id"),
+            "fullName": person.get("fullName", "Unknown"),
+            "pitchHand": person.get("pitchHand", {}).get("code", "R"),
+            "stat": p_stat,
+        })
+    return pitchers
+
+
+def find_bulk_pitcher(
+    roster: list[dict],
+    opener_id: int | None,
+    fatigued_loads: dict[int, dict],
+    savant: dict,
+    fg_proj: dict,
+    manual_bulk_name: str | None = None,
+) -> dict | None:
+    if manual_bulk_name:
+        target = manual_bulk_name.lower().strip()
+        for p in roster:
+            if p["id"] == opener_id:
+                continue
+            if target in p["fullName"].lower():
+                rate = estimate_pitcher_run_rate(p["id"], p["stat"], savant, fg_proj, prior_ip=30.0)
+                return {
+                    "id": p["id"],
+                    "name": p["fullName"].split()[-1],
+                    "pitchHand": p["pitchHand"],
+                    "rate": rate,
+                    "exp_ip": 4.33,
+                }
+
+    best_cand = None
+    best_ip_per_g = 0.0
+    for p in roster:
+        pid = p["id"]
+        if pid == opener_id:
             continue
-        p_stat = stats_list[0]["splits"][0].get("stat", {})
+        load = fatigued_loads.get(pid, {"pitches": 0, "days_pitched": 0})
+        if load["days_pitched"] > 0 or load["pitches"] > 0:
+            continue
+
+        p_stat = p["stat"]
+        gp = p_stat.get("gamesPlayed", 0)
+        gs = p_stat.get("gamesStarted", 0)
+        ip = parse_ip(p_stat.get("inningsPitched", "0"))
+        if gp <= 0 or ip <= 0:
+            continue
+        if gs >= 5 and gs > gp * 0.75 and (ip / gs) >= 4.5:
+            continue
+
+        ip_per_g = ip / gp
+        if ip_per_g >= 1.8 and ip_per_g > best_ip_per_g:
+            best_ip_per_g = ip_per_g
+            best_cand = p
+
+    if best_cand is None:
+        return None
+
+    rate = estimate_pitcher_run_rate(best_cand["id"], best_cand["stat"], savant, fg_proj, prior_ip=30.0)
+    return {
+        "id": best_cand["id"],
+        "name": best_cand["fullName"].split()[-1],
+        "pitchHand": best_cand["pitchHand"],
+        "rate": rate,
+        "exp_ip": 4.33,
+    }
+
+
+def get_team_bullpen_rate(
+    roster: list[dict],
+    fatigued_loads: dict[int, dict],
+    savant: dict,
+    fg_proj: dict,
+    exclude_ids: set[int] | None = None,
+) -> float:
+    exclude_ids = exclude_ids or set()
+    weighted_sum = 0.0
+    total_weight = 0.0
+
+    for p in roster:
+        pid = p["id"]
+        if pid in exclude_ids:
+            continue
+        p_stat = p["stat"]
+        if not p_stat:
+            continue
 
         gp = p_stat.get("gamesPlayed", 0)
         gs = p_stat.get("gamesStarted", 0)
@@ -253,6 +347,7 @@ def get_team_bullpen_rate(
         load = fatigued_loads.get(pid, {"pitches": 0, "days_pitched": 0})
         recent_pitches = load["pitches"]
         days_pitched = load["days_pitched"]
+
         if days_pitched >= 2:
             avail_weight = 0.10
         elif recent_pitches >= 30:
@@ -261,6 +356,7 @@ def get_team_bullpen_rate(
             avail_weight = 0.60
         else:
             avail_weight = 1.00
+
         ip = max(5.0, parse_ip(p_stat.get("inningsPitched", "0")))
         w = ip * avail_weight
         weighted_sum += rate * w
@@ -276,7 +372,8 @@ def to_american_odds(prob: float) -> str:
     return f"+{round(100 * (1 - prob) / prob)}"
 
 
-def run_date(target_date: str):
+def run_date(target_date: str, bulk_overrides: dict[str, str] | None = None):
+    bulk_overrides = {k.upper(): v for k, v in (bulk_overrides or {}).items()}
     season = int(target_date[:4])
     print(f"Loading Baseball Savant leaderboards & FanGraphs projections (if present) for {season}...")
     savant = load_savant_data(season)
@@ -310,29 +407,78 @@ def run_date(target_date: str):
 
     print(f"\n=== MLB Model v2 Projections for {target_date} ({len(games)} games) ===\n")
     print(
-        f"{'Matchup':<22} {'SPs (Exp IP)':<34} {'Off(A/H)':<13} {'Def(A/H)':<13} "
+        f"{'Matchup':<22} {'SPs (Exp IP)':<38} {'Off(A/H)':<13} {'Def(A/H)':<13} "
         f"{'Exp R (A-H)':<13} {'Home%':<7} {'Fair Odds (A/H)':<16} {'Actual'}"
     )
-    print("-" * 136)
+    print("-" * 140)
 
-    bp_cache: dict[int, float] = {}
+    roster_cache: dict[int, list[dict]] = {}
 
     for g, box in boxes:
         venue_name = g.get("venue", {}).get("name", "")
         pf = PARK_FACTORS.get(venue_name, 1.00)
 
-        sp_hands = {}
+        pitching_plans = {}
         for side in ("away", "home"):
-            pitchers = box["teams"][side].get("pitchers", [])
+            t_box = box["teams"][side]
+            tid = t_box["team"]["id"]
+            t_abbr = t_box["team"].get("abbreviation", t_box["team"]["name"][:3].upper())
+
+            if tid not in roster_cache:
+                roster_cache[tid] = fetch_team_pitching_roster(tid, season)
+            roster = roster_cache[tid]
+
+            pitchers = t_box.get("pitchers", [])
             sp_id = pitchers[0] if pitchers else None
-            sp_hands[side] = people_meta.get(sp_id, {}).get("pitchHand", "R") if sp_id else "R"
+            sp_name, sp_rate, sp_ip, is_opener = "TBD", LG_ERA_FIP, 5.30, False
+            sp_hand = people_meta.get(sp_id, {}).get("pitchHand", "R") if sp_id else "R"
+
+            if sp_id:
+                sp_data = t_box["players"].get(f"ID{sp_id}", {})
+                sp_name = sp_data.get("person", {}).get("fullName", "TBD").split()[-1]
+                sp_stats = sp_data.get("seasonStats", {}).get("pitching", {})
+                is_opener = is_opener_pitcher(sp_stats)
+                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=40.0)
+                sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj)
+
+            manual_bulk = bulk_overrides.get(t_abbr)
+            bulk = None
+            if is_opener or manual_bulk:
+                if manual_bulk and not is_opener:
+                    sp_ip = 1.67
+                    is_opener = True
+                bulk = find_bulk_pitcher(roster, sp_id, recent_loads, savant, fg_proj, manual_bulk)
+
+            exclude_ids = {pid for pid in (sp_id, bulk["id"] if bulk else None) if pid is not None}
+            bp_rate = get_team_bullpen_rate(roster, recent_loads, savant, fg_proj, exclude_ids=exclude_ids)
+
+            if bulk:
+                bulk_ip = bulk["exp_ip"]
+                bp_ip = max(0.0, 9.0 - sp_ip - bulk_ip)
+                pitch_raa_allowed = (
+                    (sp_ip / 9.0) * (sp_rate - LG_ERA_FIP)
+                    + (bulk_ip / 9.0) * (bulk["rate"] - LG_ERA_FIP)
+                    + (bp_ip / 9.0) * (bp_rate - LG_ERA_FIP)
+                )
+                primary_hand = bulk["pitchHand"]
+                sp_label = f"{sp_name}(OP)+{bulk['name']}({bulk_ip:.1f})"
+            else:
+                bp_ip = 9.0 - sp_ip
+                pitch_raa_allowed = (sp_ip / 9.0) * (sp_rate - LG_ERA_FIP) + (bp_ip / 9.0) * (bp_rate - LG_ERA_FIP)
+                primary_hand = sp_hand
+                sp_label = f"{sp_name}({sp_ip:.1f}/OP)" if is_opener else f"{sp_name}({sp_ip:.1f})"
+
+            pitching_plans[side] = {
+                "abbr": t_abbr,
+                "pitch_raa_allowed": pitch_raa_allowed,
+                "primary_hand": primary_hand,
+                "sp_label": sp_label,
+            }
 
         team_metrics = {}
         for side in ("away", "home"):
             opp_side = "home" if side == "away" else "away"
             t_box = box["teams"][side]
-            tid = t_box["team"]["id"]
-            t_abbr = t_box["team"].get("abbreviation", t_box["team"]["name"][:3].upper())
 
             batting_order = t_box.get("battingOrder", [])[:9]
             off_raa = 0.0
@@ -340,38 +486,20 @@ def run_date(target_date: str):
                 p_data = t_box["players"].get(f"ID{pid}", {})
                 bat_stats = p_data.get("seasonStats", {}).get("batting", {})
                 raa_pa = estimate_batter_raa_per_pa(
-                    pid, bat_stats, sp_hands[opp_side], people_meta, savant, fg_proj
+                    pid, bat_stats, pitching_plans[opp_side]["primary_hand"], people_meta, savant, fg_proj
                 )
                 pa_weight = PA_BY_SPOT[idx] if idx < 9 else 3.85
                 off_raa += pa_weight * raa_pa
 
-            pitchers = t_box.get("pitchers", [])
-            sp_name, sp_rate, sp_ip = "TBD", LG_ERA_FIP, 5.30
-            if pitchers:
-                sp_id = pitchers[0]
-                sp_data = t_box["players"].get(f"ID{sp_id}", {})
-                sp_name = sp_data.get("person", {}).get("fullName", "TBD").split()[-1]
-                sp_stats = sp_data.get("seasonStats", {}).get("pitching", {})
-                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=40.0)
-                sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj)
-
-            if tid not in bp_cache:
-                bp_cache[tid] = get_team_bullpen_rate(tid, season, recent_loads, savant, fg_proj)
-            bp_rate = bp_cache[tid]
-            bp_ip = 9.0 - sp_ip
-
-            pitch_raa_allowed = (sp_ip / 9.0) * (sp_rate - LG_ERA_FIP) + (bp_ip / 9.0) * (bp_rate - LG_ERA_FIP)
             def_raa = estimate_team_defense_raa(t_box, savant)
             actual_runs = t_box.get("teamStats", {}).get("batting", {}).get("runs", "-")
 
             team_metrics[side] = {
-                "abbr": t_abbr,
+                "abbr": pitching_plans[side]["abbr"],
                 "off_raa": off_raa,
-                "pitch_raa_allowed": pitch_raa_allowed,
+                "pitch_raa_allowed": pitching_plans[side]["pitch_raa_allowed"],
                 "def_raa": def_raa,
-                "sp_name": sp_name,
-                "sp_hand": sp_hands[side],
-                "sp_ip": sp_ip,
+                "sp_label": pitching_plans[side]["sp_label"],
                 "actual_runs": actual_runs,
             }
 
@@ -393,7 +521,7 @@ def run_date(target_date: str):
         p_away = 1.0 - p_home
 
         matchup_str = f"{away_m['abbr']} @ {home_m['abbr']} ({pf:.2f})"
-        sp_str = f"{away_m['sp_name']}({away_m['sp_ip']:.1f}) v {home_m['sp_name']}({home_m['sp_ip']:.1f})"
+        sp_str = f"{away_m['sp_label']} v {home_m['sp_label']}"
         off_str = f"{away_m['off_raa']:+.2f}/{home_m['off_raa']:+.2f}"
         def_str = f"{away_m['def_raa']:+.2f}/{home_m['def_raa']:+.2f}"
         exp_r_str = f"{rs_away:.2f} - {rs_home:.2f}"
@@ -401,7 +529,7 @@ def run_date(target_date: str):
         actual_str = f"{away_m['actual_runs']} - {home_m['actual_runs']}"
 
         print(
-            f"{matchup_str:<22} {sp_str:<34} {off_str:<13} {def_str:<13} "
+            f"{matchup_str:<22} {sp_str:<38} {off_str:<13} {def_str:<13} "
             f"{exp_r_str:<13} {p_home*100:>5.1f}%  {odds_str:<16} {actual_str}"
         )
 
@@ -409,5 +537,12 @@ def run_date(target_date: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run MLB Win-Probability Model v2 for a given date.")
     parser.add_argument("--date", default="2026-07-04", help="Date in YYYY-MM-DD format")
+    parser.add_argument(
+        "--bulk",
+        action="append",
+        default=[],
+        help="Optional bulk pitcher override, e.g. --bulk TB=Bradley (repeatable)",
+    )
     args = parser.parse_args()
-    run_date(args.date)
+    bulk_map = dict(item.split("=", 1) for item in args.bulk if "=" in item)
+    run_date(args.date, bulk_overrides=bulk_map)
