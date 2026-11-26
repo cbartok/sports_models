@@ -161,16 +161,18 @@ def fetch_people_platoon_and_meta(player_ids: list[int], season: int) -> dict[in
     return result
 
 
-def get_all_recent_pitch_loads(target_date: str) -> dict[int, int]:
+def get_all_recent_pitch_loads(target_date: str) -> dict[int, dict]:
     dt = datetime.strptime(target_date, "%Y-%m-%d")
     start = (dt - timedelta(days=2)).strftime("%Y-%m-%d")
     end = (dt - timedelta(days=1)).strftime("%Y-%m-%d")
     url = f"{BASE_URL}/schedule?sportId=1&startDate={start}&endDate={end}"
     sched = SESSION.get(url, timeout=15).json()
 
-    loads: dict[int, int] = {}
+    pitches_by_pid: dict[int, int] = {}
+    dates_by_pid: dict[int, set[str]] = {}
     seen_pks = set()
     for d in sched.get("dates", []):
+        game_date = d.get("date", "")
         for g in d.get("games", []):
             if g.get("status", {}).get("abstractGameState") != "Final":
                 continue
@@ -184,5 +186,11 @@ def get_all_recent_pitch_loads(target_date: str) -> dict[int, int]:
                 for pid in t_box.get("pitchers", []):
                     p_info = t_box["players"].get(f"ID{pid}", {})
                     pitches = p_info.get("stats", {}).get("pitching", {}).get("numberOfPitches", 0)
-                    loads[pid] = loads.get(pid, 0) + pitches
-    return loads
+                    if pitches > 0:
+                        pitches_by_pid[pid] = pitches_by_pid.get(pid, 0) + pitches
+                        dates_by_pid.setdefault(pid, set()).add(game_date)
+
+    return {
+        pid: {"pitches": pitches_by_pid[pid], "days_pitched": len(dates_by_pid.get(pid, set()))}
+        for pid in pitches_by_pid
+    }

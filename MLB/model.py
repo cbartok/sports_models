@@ -224,7 +224,7 @@ def estimate_team_defense_raa(t_box: dict, savant: dict) -> float:
 def get_team_bullpen_rate(
     team_id: int,
     season: int,
-    fatigued_loads: dict[int, int],
+    fatigued_loads: dict[int, dict],
     savant: dict,
     fg_proj: dict,
 ) -> float:
@@ -250,8 +250,17 @@ def get_team_bullpen_rate(
             continue
 
         rate = estimate_pitcher_run_rate(pid, p_stat, savant, fg_proj, prior_ip=25.0)
-        recent_pitches = fatigued_loads.get(pid, 0)
-        avail_weight = 0.25 if recent_pitches >= 30 else (0.60 if recent_pitches >= 15 else 1.0)
+        load = fatigued_loads.get(pid, {"pitches": 0, "days_pitched": 0})
+        recent_pitches = load["pitches"]
+        days_pitched = load["days_pitched"]
+        if days_pitched >= 2:
+            avail_weight = 0.10
+        elif recent_pitches >= 30:
+            avail_weight = 0.25
+        elif recent_pitches >= 15:
+            avail_weight = 0.60
+        else:
+            avail_weight = 1.00
         ip = max(5.0, parse_ip(p_stat.get("inningsPitched", "0")))
         w = ip * avail_weight
         weighted_sum += rate * w
