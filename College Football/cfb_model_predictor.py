@@ -69,12 +69,17 @@ def predict_week(start_date=None, end_date=None, output_csv="cfb_predictions.csv
 
 
 def export_github_pages_json(results_df, target_date=None, data_dir="../docs/data/cfb"):
+    """Overwrite latest.json for the GitHub Pages dashboard (no daily archive bloat)."""
     if not data_dir:
         return None
     os.makedirs(data_dir, exist_ok=True)
 
     now_pt = datetime.now(PACIFIC_TZ)
-    slate_date = pd.to_datetime(target_date).strftime("%Y-%m-%d") if target_date else now_pt.strftime("%Y-%m-%d")
+    slate_date = (
+        pd.to_datetime(target_date).strftime("%Y-%m-%d")
+        if target_date
+        else now_pt.strftime("%Y-%m-%d")
+    )
 
     records = json.loads(results_df.copy().to_json(orient="records"))
     payload = {
@@ -84,19 +89,10 @@ def export_github_pages_json(results_df, target_date=None, data_dir="../docs/dat
     }
 
     latest_path = os.path.join(data_dir, "latest.json")
-    dated_path = os.path.join(data_dir, f"{slate_date}.json")
-    for path in (latest_path, dated_path):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+    with open(latest_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
 
-    dates = sorted(
-        [fn[:-5] for fn in os.listdir(data_dir) if fn.endswith(".json") and fn not in ("latest.json", "dates.json")],
-        reverse=True,
-    )
-    with open(os.path.join(data_dir, "dates.json"), "w", encoding="utf-8") as f:
-        json.dump(dates, f, indent=2)
-
-    print(f"Exported {len(records)} CFB games to {latest_path} and {dated_path}.")
+    print(f"Exported {len(records)} CFB games to {latest_path}.")
     return latest_path
 
 

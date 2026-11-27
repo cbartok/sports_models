@@ -133,7 +133,7 @@ def upload_to_google_sheets(
 
 
 def export_github_pages_json(results_df, target_date=None, data_dir="../docs/data"):
-    """Write latest.json, YYYY-MM-DD.json, and dates.json for the GitHub Pages dashboard."""
+    """Overwrite latest.json for the GitHub Pages dashboard (no daily archive bloat)."""
     if not data_dir:
         return None
     os.makedirs(data_dir, exist_ok=True)
@@ -153,23 +153,10 @@ def export_github_pages_json(results_df, target_date=None, data_dir="../docs/dat
     }
 
     latest_path = os.path.join(data_dir, "latest.json")
-    dated_path = os.path.join(data_dir, f"{slate_date}.json")
-    for path in (latest_path, dated_path):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+    with open(latest_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
 
-    dates = sorted(
-        [
-            fn[:-5]
-            for fn in os.listdir(data_dir)
-            if fn.endswith(".json") and fn not in ("latest.json", "dates.json")
-        ],
-        reverse=True,
-    )
-    with open(os.path.join(data_dir, "dates.json"), "w", encoding="utf-8") as f:
-        json.dump(dates, f, indent=2)
-
-    print(f"Exported {len(records)} games to {latest_path} and {dated_path}.")
+    print(f"Exported {len(records)} CBB games to {latest_path}.")
     return latest_path
 
 
