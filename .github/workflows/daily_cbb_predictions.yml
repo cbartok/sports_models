@@ -50,16 +50,14 @@ jobs:
         if: steps.tz_check.outputs.should_run == 'true'
         working-directory: "College Basketball"
         env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID || '1HRsJE6S7BW4B36ZgkVVQu0ztCedESuVjT-Kf7--jGvU' }}
           CBBD_API_KEY: ${{ secrets.CBBD_API_KEY }}
           THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
           KENPOM_API_KEY: ${{ secrets.KENPOM_API_KEY }}
         run: |
           if [ -n "${{ github.event.inputs.target_date }}" ]; then
-            python cbb_model_predictor.py --date "${{ github.event.inputs.target_date }}"
+            python cbb_model_predictor.py --no-sheets --date "${{ github.event.inputs.target_date }}"
           else
-            python cbb_model_predictor.py
+            python cbb_model_predictor.py --no-sheets
           fi
 
       - name: Upload predictions CSV artifact
