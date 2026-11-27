@@ -1,96 +1,51 @@
 {
   "slate_date": "2026-11-27",
-  "updated_at": "2026-11-27 12:12 AM PST",
+  "updated_at": "2026-11-27 03:27 PM PST",
   "games": [
-    {
-      "date": "Nov 27",
-      "away_name": "Arkansas-Pine Bluff",
-      "home_name": "Missouri",
-      "neutral": 0,
-      "spread": 48.5,
-      "prediction": 38.92,
-      "difference": -9.58
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Bellarmine",
-      "home_name": "Butler",
-      "neutral": 0,
-      "spread": 18.5,
-      "prediction": 15.62,
-      "difference": -2.88
-    },
     {
       "date": "Nov 27",
       "away_name": "Bowling Green State",
       "home_name": "Indiana",
       "neutral": 0,
-      "spread": 22.5,
-      "prediction": 21.26,
-      "difference": -1.24
+      "spread": null,
+      "prediction": 21.22,
+      "difference": null
     },
     {
       "date": "Nov 27",
       "away_name": "Charleston Southern",
       "home_name": "ETSU",
       "neutral": 0,
-      "spread": 10.5,
-      "prediction": 10.18,
-      "difference": -0.32
+      "spread": 9.5,
+      "prediction": 10.16,
+      "difference": 0.66
     },
     {
       "date": "Nov 27",
       "away_name": "Cincinnati",
       "home_name": "Boston College",
       "neutral": 1,
-      "spread": -8.5,
-      "prediction": -8.16,
-      "difference": 0.34
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Colgate",
-      "home_name": "Hofstra",
-      "neutral": 0,
-      "spread": 3.5,
-      "prediction": 4.96,
-      "difference": 1.46
+      "spread": null,
+      "prediction": -8.21,
+      "difference": null
     },
     {
       "date": "Nov 27",
       "away_name": "Creighton",
       "home_name": "Gonzaga",
       "neutral": 1,
-      "spread": 5.5,
-      "prediction": 5.33,
-      "difference": -0.17
+      "spread": 6.5,
+      "prediction": 5.23,
+      "difference": -1.27
     },
     {
       "date": "Nov 27",
       "away_name": "Drake",
       "home_name": "Boise State",
       "neutral": 1,
-      "spread": 5.5,
-      "prediction": 8.61,
-      "difference": 3.11
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Georgetown",
-      "home_name": "UCLA",
-      "neutral": 1,
-      "spread": 8.5,
-      "prediction": 8.81,
-      "difference": 0.31
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Hampton",
-      "home_name": "UMass-Lowell",
-      "neutral": 1,
-      "spread": 2.5,
-      "prediction": 1.87,
-      "difference": -0.63
+      "spread": null,
+      "prediction": 8.73,
+      "difference": null
     },
     {
       "date": "Nov 27",
@@ -98,8 +53,8 @@
       "home_name": "Washington State",
       "neutral": 0,
       "spread": 11.5,
-      "prediction": 11.95,
-      "difference": 0.45
+      "prediction": 11.91,
+      "difference": 0.41
     },
     {
       "date": "Nov 27",
@@ -107,107 +62,71 @@
       "home_name": "Omaha",
       "neutral": 1,
       "spread": -5.5,
-      "prediction": -7.62,
-      "difference": -2.12
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "La Salle",
-      "home_name": "Bucknell",
-      "neutral": 1,
-      "spread": -9.5,
-      "prediction": -6.62,
-      "difference": 2.88
+      "prediction": -7.61,
+      "difference": -2.11
     },
     {
       "date": "Nov 27",
       "away_name": "Lehigh",
       "home_name": "UCSB",
       "neutral": 1,
-      "spread": 14.5,
-      "prediction": 13.22,
-      "difference": -1.28
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Liberty",
-      "home_name": "St. Thomas",
-      "neutral": 1,
-      "spread": -1.5,
-      "prediction": 1.61,
-      "difference": 3.11
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Maine",
-      "home_name": "Le Moyne",
-      "neutral": 1,
-      "spread": -1.5,
-      "prediction": 0.3,
-      "difference": 1.8
+      "spread": 13.5,
+      "prediction": 13.21,
+      "difference": -0.29
     },
     {
       "date": "Nov 27",
       "away_name": "Marquette",
       "home_name": "Texas A&M",
       "neutral": 1,
-      "spread": 1.5,
-      "prediction": 1.66,
-      "difference": 0.16
+      "spread": null,
+      "prediction": 1.71,
+      "difference": null
     },
     {
       "date": "Nov 27",
       "away_name": "Miami (FL)",
       "home_name": "Alabama",
       "neutral": 1,
-      "spread": -2.5,
-      "prediction": -2.83,
-      "difference": -0.33
+      "spread": -1.5,
+      "prediction": -2.99,
+      "difference": -1.49
     },
     {
       "date": "Nov 27",
       "away_name": "Michigan",
       "home_name": "Kansas State",
       "neutral": 1,
-      "spread": -7.5,
-      "prediction": -7.88,
-      "difference": -0.38
+      "spread": null,
+      "prediction": -7.9,
+      "difference": null
     },
     {
       "date": "Nov 27",
       "away_name": "Missouri State",
       "home_name": "Oral Roberts",
       "neutral": 0,
-      "spread": 3.5,
-      "prediction": 4.51,
-      "difference": 1.01
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Navy",
-      "home_name": "Fairfield",
-      "neutral": 0,
-      "spread": 5.5,
-      "prediction": 5.5,
-      "difference": 0.0
+      "spread": 4.5,
+      "prediction": 4.48,
+      "difference": -0.02
     },
     {
       "date": "Nov 27",
       "away_name": "Niagara",
       "home_name": "Lafayette",
       "neutral": 0,
-      "spread": 5.5,
-      "prediction": 5.06,
-      "difference": -0.44
+      "spread": null,
+      "prediction": 5.07,
+      "difference": null
     },
     {
       "date": "Nov 27",
       "away_name": "North Dakota State",
       "home_name": "North Texas",
       "neutral": 1,
-      "spread": 6.5,
-      "prediction": 7.75,
-      "difference": 1.25
+      "spread": 5.5,
+      "prediction": 7.72,
+      "difference": 2.22
     },
     {
       "date": "Nov 27",
@@ -215,8 +134,8 @@
       "home_name": "Northwestern",
       "neutral": 0,
       "spread": 12.5,
-      "prediction": 13.43,
-      "difference": 0.93
+      "prediction": 13.4,
+      "difference": 0.9
     },
     {
       "date": "Nov 27",
@@ -232,17 +151,8 @@
       "away_name": "Old Dominion",
       "home_name": "Virginia Tech",
       "neutral": 0,
-      "spread": 18.5,
-      "prediction": 15.37,
-      "difference": -3.13
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Oregon",
-      "home_name": "Maryland",
-      "neutral": 1,
       "spread": null,
-      "prediction": 1.08,
+      "prediction": 15.4,
       "difference": null
     },
     {
@@ -250,9 +160,9 @@
       "away_name": "Pacific",
       "home_name": "UC-Davis",
       "neutral": 1,
-      "spread": -5.5,
-      "prediction": -3.1,
-      "difference": 2.4
+      "spread": -6.5,
+      "prediction": -3.09,
+      "difference": 3.41
     },
     {
       "date": "Nov 27",
@@ -260,97 +170,43 @@
       "home_name": "Mississippi State",
       "neutral": 1,
       "spread": 6.5,
-      "prediction": 5.89,
-      "difference": -0.61
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Princeton",
-      "home_name": "UNC Wilmington",
-      "neutral": 0,
-      "spread": 8.5,
-      "prediction": 6.64,
-      "difference": -1.86
+      "prediction": 5.82,
+      "difference": -0.68
     },
     {
       "date": "Nov 27",
       "away_name": "Radford",
       "home_name": "American",
       "neutral": 0,
-      "spread": 7.5,
-      "prediction": 5.83,
-      "difference": -1.67
+      "spread": null,
+      "prediction": 5.82,
+      "difference": null
     },
     {
       "date": "Nov 27",
-      "away_name": "South Alabama",
-      "home_name": "Fresno State",
+      "away_name": "San Diego State",
+      "home_name": "Texas Tech",
       "neutral": 1,
-      "spread": -1.5,
-      "prediction": -0.5,
-      "difference": 1.0
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Southern",
-      "home_name": "Vanderbilt",
-      "neutral": 0,
-      "spread": 37.5,
-      "prediction": 32.91,
-      "difference": -4.59
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "St. John's (NY)",
-      "home_name": "Iowa State",
-      "neutral": 1,
-      "spread": -3.5,
-      "prediction": -1.39,
-      "difference": 2.11
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "TCU",
-      "home_name": "Baylor",
-      "neutral": 1,
-      "spread": 4.5,
-      "prediction": 5.34,
-      "difference": 0.84
+      "spread": 8.5,
+      "prediction": 9.33,
+      "difference": 0.83
     },
     {
       "date": "Nov 27",
       "away_name": "Tennessee",
       "home_name": "Louisville",
       "neutral": 1,
-      "spread": -1.5,
-      "prediction": -2.09,
-      "difference": -0.59
+      "spread": 3.5,
+      "prediction": -1.99,
+      "difference": -5.49
     },
     {
       "date": "Nov 27",
       "away_name": "Texas",
       "home_name": "Saint Mary's",
       "neutral": 1,
-      "spread": -7.5,
-      "prediction": -6.35,
-      "difference": 1.15
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Texas State",
-      "home_name": "Louisiana Tech",
-      "neutral": 0,
-      "spread": -4.5,
-      "prediction": -7.91,
-      "difference": -3.41
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Texas Tech",
-      "home_name": "San Diego State",
-      "neutral": 1,
       "spread": null,
-      "prediction": -7.53,
+      "prediction": -6.27,
       "difference": null
     },
     {
@@ -358,9 +214,9 @@
       "away_name": "Towson",
       "home_name": "Penn",
       "neutral": 0,
-      "spread": 4.5,
-      "prediction": 5.01,
-      "difference": 0.51
+      "spread": 3.5,
+      "prediction": 5.26,
+      "difference": 1.76
     },
     {
       "date": "Nov 27",
@@ -368,80 +224,44 @@
       "home_name": "Georgia",
       "neutral": 1,
       "spread": 5.5,
-      "prediction": 5.9,
-      "difference": 0.4
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "UMBC",
-      "home_name": "George Washington",
-      "neutral": 0,
-      "spread": 21.5,
-      "prediction": 18.53,
-      "difference": -2.97
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Vermont",
-      "home_name": "Merrimack",
-      "neutral": 1,
-      "spread": -2.5,
-      "prediction": -2.79,
-      "difference": -0.29
+      "prediction": 5.95,
+      "difference": 0.45
     },
     {
       "date": "Nov 27",
       "away_name": "Villanova",
       "home_name": "Kansas",
       "neutral": 0,
-      "spread": 12.5,
-      "prediction": 12.39,
-      "difference": -0.11
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Virginia",
-      "home_name": "Xavier",
-      "neutral": 1,
-      "spread": -7.5,
-      "prediction": -5.89,
-      "difference": 1.61
-    },
-    {
-      "date": "Nov 27",
-      "away_name": "Wake Forest",
-      "home_name": "Memphis",
-      "neutral": 1,
-      "spread": 2.5,
-      "prediction": 3.61,
-      "difference": 1.11
+      "spread": null,
+      "prediction": 12.41,
+      "difference": null
     },
     {
       "date": "Nov 27",
       "away_name": "West Virginia",
       "home_name": "UNC",
       "neutral": 1,
-      "spread": -2.5,
+      "spread": -3.5,
       "prediction": -0.37,
-      "difference": 2.13
+      "difference": 3.13
     },
     {
       "date": "Nov 27",
       "away_name": "Western Kentucky",
       "home_name": "Illinois",
       "neutral": 0,
-      "spread": 27.5,
+      "spread": null,
       "prediction": 26.65,
-      "difference": -0.85
+      "difference": null
     },
     {
       "date": "Nov 27",
       "away_name": "Wichita State",
       "home_name": "Kentucky",
       "neutral": 0,
-      "spread": 3.5,
-      "prediction": 4.47,
-      "difference": 0.97
+      "spread": 4.5,
+      "prediction": 4.42,
+      "difference": -0.08
     }
   ]
 }
