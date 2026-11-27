@@ -45,4 +45,39 @@ See [`MLB/README.md`](MLB/README.md) for full model details.
 
 - **Offense (`Off_RAA`)**: 9-man starting batting order from the MLB Stats API evaluated with FanGraphs `wRC+`/`BsR` (if provided) or Bayesian-regressed Statcast `xwOBA` + `wOBA`, baserunning, and L/R platoon splits.
 - **Pitching & Bullpen (`Pitch_RAA_allowed`)**: Starter true-talent run rate (`SIERA` or `xERA`/`FIP` blend), exact `gameLog`-verified starter IP for swingmen/converted relievers, opener/bulk detection, and 2-day bullpen pitch-count fatigue weighting.
-- **Defense & Fair Odds (`Def_R
+- **Defense & Fair Odds (`Def_RAA`)**: Statcast OAA + catcher framing, 5-year ballpark factors, Pythagenpat win probability, and empirical Home-Field Advantage (`+0.1254` log-odds).
+- **Incremental State Machine (`MLB/mlb_daily_runner.py`)**:
+  - Uses `docs/data/mlb/latest.json` (keyed by `game_pk`) so each game is modeled at most twice: once with projected lineups and once when both teams post official 9-man lineups.
+  - Refreshes DraftKings moneylines and recomputes EV & Quarter-Kelly for `Preview` games without re-running the MLB model.
+  - Never deletes `Live` or `Final` games—locks pregame predictions & closing pregame odds at first pitch while updating live/final scores.
+
+---
+
+## Quick Start
+
+```bash
+# College Basketball
+cd "College Basketball" && pip install -r requirements.txt
+python cbb_model_predictor.py --no-sheets
+python cbb_model_builder.py
+
+# College Football
+cd "College Football" && pip install -r requirements.txt
+python cfb_model_predictor.py --no-sheets
+python cfb_model_builder.py
+
+# NFL
+cd NFL && pip install -r requirements.txt
+python nfl_model_predictor.py
+python nfl_model_builder.py
+
+# MLB (incremental daily sync + GitHub Pages JSON)
+cd MLB && pip install -r requirements.txt
+python mlb_daily_runner.py --date 2026-07-04
+```
+
+---
+
+## Disclaimer
+
+For informational and entertainment purposes only. All predictions are automated statistical model outputs—not betting advice, financial recommendations, or guarantees of any outcome.
