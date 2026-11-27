@@ -1,864 +1,527 @@
-from sportsipy.nfl.teams import Teams
-from sportsipy.nfl.schedule import Schedule
-from sportsipy.nfl.boxscore import Boxscore, Boxscores
-import pandas as pd
-import numpy as np
-from scipy import stats
-from datetime import datetime
-import requests
 import os
-import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import numpy as np
+import pandas as pd
+import requests
 from bs4 import BeautifulSoup
 
-class NflDataLayer():
-    '''
-    Class to hold all functions that pull data from outside sources for College Football
-    '''
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
 
-    def __init__(self):
-        self.team_replace = {'LARams': 'Los Angeles Rams', 'LAChargers': 'Los Angeles Chargers',\
-                        'NYGiants':'New York Giants', 'NYJets':'New York Jets', 'St.Louis':'St. Louis', 'Los Angeles': 'Los Angeles Rams',
-                        'Buffalo Bills': 'Buffalo', 'New York': 'New York Giants', 'Houston Texans':'Houston', 'ne':'nwe', 'no':'nor',\
-                        'ind':'clt', 'bal':'rav', 'lac':'sdg', 'ari':'crd', 'gb':'gnb',\
-                        'oak':'rai', 'ten':'oti', 'tb':'tam', 'sf':'sfo', 'lar':'ram', 'hou':'htx', 'kc':'kan', 'stl':'ram', 'sd':'sdg',
-                        'jac':'jax', 'larm':'ram', 'lach':'sdg', 'LA Chargers':'Los Angeles Chargers', 'LA Rams':'Los Angeles Rams',\
-                        'L.A. Chargers':'Los Angeles Chargers', 'L.A. Rams':'Los Angeles Rams'}
+ESPN_NFL_BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
+NFLVERSE_GAMES_URL = (
+    "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv"
+)
+NFLVERSE_TEAM_WEEK_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/stats_team/"
+    "stats_team_week_{year}.csv"
+)
 
-    def pull_teams_information(self):
-        '''
-        Pulls all team for this year
-        '''
-        ##Try to pull the latest team data
-        ##If it fails, use the last year
-        try:          
-            teams = Teams()
-        except:
-            teams = Teams(int(pd.to_datetime('now').year) -  1)
-        self.all_team_data = teams.dataframes
-        self.team_list = list(self.all_team_data['name'].unique())
-        self.team_abbreviations = list(self.all_team_data['abbreviation'].unique())
 
-    def pull_historical_team_info(self, year):
-        '''
-        Pulls all team stats for a given year
-        '''
-        teams = Teams(year)
-        return teams.dataframes
+def _nfl_season_for_date(dt):
+    dt = pd.to_datetime(dt)
+    return dt.year - 1 if dt.month <= 2 else dt.year
 
-    def create_dataframe(self, week, year, start_day, end_day):
-        '''
-        Compile a complete dataframe for the games for the given time period
-        '''
-        data = self.pull_schedule(week, year)
 
-        ##Keep only the city name for the name
-        ##Except for cities with multiple teams
-        data['away_name'] = data['away_name'].apply(lambda x: x.rsplit(' ', 1)[0] if x.rsplit(' ', 1)[0] not in ['Los Angeles', 'New York'] else x)
-        data['home_name'] = data['home_name'].apply(lambda x: x.rsplit(' ', 1)[0] if x.rsplit(' ', 1)[0] not in ['Los Angeles', 'New York'] else x)
+def _format_short_date(dt):
+    dt = pd.to_datetime(dt)
+    return f"{dt.strftime('%b')} {dt.day}"
 
-        ##Pull and merge advanced stats
-        ##Data is pulled from football outsiders
-        advanced_stats = self.pull_football_outsiders_stats()
 
-        away_advanced_stats = advanced_stats.copy()
-        home_advanced_stats = advanced_stats.copy()
+# Canonical NFL team names (matching TeamRankings / historical conventions)
+ABBR_TO_CANONICAL = {
+    "ARI": "Arizona",
+    "ATL": "Atlanta",
+    "BAL": "Baltimore",
+    "BUF": "Buffalo",
+    "CAR": "Carolina",
+    "CHI": "Chicago",
+    "CIN": "Cincinnati",
+    "CLE": "Cleveland",
+    "DAL": "Dallas",
+    "DEN": "Denver",
+    "DET": "Detroit",
+    "GB": "Green Bay",
+    "HOU": "Houston",
+    "IND": "Indianapolis",
+    "JAX": "Jacksonville",
+    "JAC": "Jacksonville",
+    "KC": "Kansas City",
+    "LA": "LA Rams",
+    "LAR": "LA Rams",
+    "STL": "LA Rams",
+    "LAC": "LA Chargers",
+    "SD": "LA Chargers",
+    "LV": "Las Vegas",
+    "OAK": "Las Vegas",
+    "MIA": "Miami",
+    "MIN": "Minnesota",
+    "NE": "New England",
+    "NO": "New Orleans",
+    "NYG": "NY Giants",
+    "NYJ": "NY Jets",
+    "PHI": "Philadelphia",
+    "PIT": "Pittsburgh",
+    "SEA": "Seattle",
+    "SF": "San Francisco",
+    "TB": "Tampa Bay",
+    "TEN": "Tennessee",
+    "WAS": "Washington",
+    "WSH": "Washington",
+}
 
-        away_advanced_stats.columns = ['away_' + str(col) for col in away_advanced_stats.columns]
-        home_advanced_stats.columns = ['home_' + str(col) for col in home_advanced_stats.columns]
 
-        data = data.merge(away_advanced_stats, how='left')
-        data = data.merge(home_advanced_stats, how='left')
+class NflDataLayer:
+    """
+    Data layer for NFL modeling.
 
-        ##Pull and merge teamrankings data
-        team_rankings_data = self.pull_team_rankings_data(year)
+    Replaces sportsipy, defunct Football Outsiders DVOA, and Sportsbook Review with:
+      - Schedules, neutral/international flags, exact rest days (<6 short, >10 bye),
+        and historical closing spreads: nflverse games.csv (1999-present, zero API key)
+      - Opponent-adjusted efficiency (Net EPA/play, Off/Def Pass & Rush EPA/play):
+          nflverse stats_team_week_{year}.csv (replaces paywalled DVOA, zero API key)
+      - Live upcoming games & DraftKings spreads: ESPN NFL Public JSON API (zero API key)
+      - TeamRankings NFL (2 /ranking/ pages): concurrent ThreadPoolExecutor fetching
+    """
 
-        away_team_rankings = team_rankings_data.copy()
-        home_team_rankings = team_rankings_data.copy()
+    def __init__(self, max_workers=10):
+        self.max_workers = max_workers
+        self.session = requests.Session()
+        self.session.headers.update(DEFAULT_HEADERS)
+        self._games_cache = None
 
-        away_team_rankings.columns = ['away_' + str(col) for col in away_team_rankings.columns]
-        home_team_rankings.columns = ['home_' + str(col) for col in home_team_rankings.columns]
+        self.team_replace = {
+            "Los Angeles Rams": "LA Rams",
+            "Los Angeles Chargers": "LA Chargers",
+            "L.A. Rams": "LA Rams",
+            "L.A. Chargers": "LA Chargers",
+            "St. Louis": "LA Rams",
+            "San Diego": "LA Chargers",
+            "Oakland": "Las Vegas",
+            "New York Giants": "NY Giants",
+            "New York Jets": "NY Jets",
+            "N.Y. Giants": "NY Giants",
+            "N.Y. Jets": "NY Jets",
+            "LA Rams": "LA Rams",
+            "LA Chargers": "LA Chargers",
+            "NY Giants": "NY Giants",
+            "NY Jets": "NY Jets",
+            "Washington Football Team": "Washington",
+            "Washington Commanders": "Washington",
+            "Washington Redskins": "Washington",
+        }
 
-        data = data.merge(away_team_rankings, how='left')
-        data = data.merge(home_team_rankings, how='left')
+    def normalize_team_name(self, series):
+        s = series.astype(str).str.strip()
+        s = s.replace(ABBR_TO_CANONICAL)
+        return s.replace(self.team_replace)
 
-        ##Drop all rows with nans
-        ##This is done so we can standardize the stats
-        data.dropna(inplace=True)
+    def _load_nflverse_games(self):
+        if self._games_cache is None:
+            self._games_cache = pd.read_csv(NFLVERSE_GAMES_URL)
+        return self._games_cache.copy()
 
-        ##Standardize the numeric data and update in terms of strengths of both teams
-        data = self.create_opponent_adjusted_stats(data, 10)
-
-        ##Pull odds for the games
-        ##Use reverse odds to ensure that neutral site games are included
-        odds = self.pull_current_odds(start_day, end_day)
-        reversed_odds = pd.DataFrame()
-        reversed_odds['home_name'] = odds['away_name']
-        reversed_odds['away_name'] = odds['home_name']
-        odds = pd.concat([odds, reversed_odds])
-
-        ##Merge odds in
-        data = data.merge(odds, how='left')
-
-        ##Drop all columns that aren't needed
-        data.drop(columns=['away_abbr', 'home_abbr'], inplace=True)
-
-        return data
-
-    def create_historical_dataframe(self, first_year=2007, last_year=2018):
-        '''
-        Compiles a complete dataframe of stats to use to train models
-        Uses specified years given 
-        Note:2007 is the first year with historical odds
-        '''
-        full_data = []
-        ##Pull the historical data for each specified year
-        for year in range(first_year, last_year+1):
-            subset_data = self.create_historical_data(year)
-            full_data.append(subset_data)
-
-            ##Save after each year is completed
-            partial_historical_data = pd.concat(full_data)
-            partial_historical_data.to_csv('historical_nfl_data.csv', index=False)
-
-        full_data = pd.concat(full_data)
-
-        ##Pull the historical odds
-        ##Use reverse odds to ensure that neutral site games are included
-        odds = self.pull_historical_odds()
-        reversed_odds = pd.DataFrame()
-        reversed_odds['home_name'] = odds['away_name']
-        reversed_odds['away_name'] = odds['home_name']
-        reversed_odds['close'] = -odds['close']
-        reversed_odds['year'] = odds['year']
-        reversed_odds['date'] = odds['date']
-        odds = pd.concat([odds, reversed_odds])
-
-        ##Merge odds in
-        full_data = full_data.merge(odds, how='left')
-
-        ##Save full historical data
-        full_data.to_csv('historical_nfl_data_full.csv', index=False)
-
-        ##Drop all columns that aren't used for regression and save
-        full_data.drop(columns=['away_abbr', 'home_abbr', 'away_name', 'home_name', 'home_score', 'away_score', 'date'], inplace=True) 
-
-        full_data.to_csv('historical_nfl_data.csv', index=False)
-
-        return full_data
-
-    def create_opponent_adjusted_stats(self, data, index_start):
-        '''
-        Update the dataframe to reflect differences in team level for each stat
-        First, standardize all columns after a certain index
-        By standardize, we normalize each cell by subtracting the min value of the column and dividing by the range
-        This transforms the data to be between 0 and 1
-        Then, calculate the difference between the two teams with the opposing stats.
-
-        All of these comparitive stats will be in terms of the home team
-        '''
-        
-        ##First ensure that all columns are numeric
-        data.iloc[:,index_start:] = data.iloc[:,index_start:].apply(pd.to_numeric)
-
-        ##Normalize the data
-        data.iloc[:,index_start:] = (data.iloc[:,index_start:] - np.mean(data.iloc[:,index_start:], axis=0))/(np.std(data.iloc[:,index_start:], axis=0))
-
-        ##Create a new dataframe to hold the opponent-adjusted stats
-        updated_data = data.iloc[:,0:index_start].copy()
-
-        ##Create a column for the opponent adjusted stats from the original dataframe
-        ##There might be a way to automate this in the future but do it manually for now 
-        ##Note we have to vary the signs to ensure that we calculate everything correctly       
-        updated_data['dvoa'] = data['home_dvoa'] - data['away_dvoa']
-        updated_data['home_off_dvoa'] = data['home_off_dvoa'] + data['away_def_dvoa']
-        updated_data['away_off_dvoa'] = data['away_off_dvoa'] - data['home_def_dvoa']
-        updated_data['sp_dvoa'] = data['home_sp_dvoa'] - data['away_sp_dvoa']
-        updated_data['team_rankings_rating'] = data['home_team_rankings_rating'] - data['away_team_rankings_rating']
-        updated_data['strength_of_schedule'] = data['home_strength_of_schedule'] - data['away_strength_of_schedule']
-
-        ##Lower defensive stats indicates a better performance
-        updated_data['away_points_per_play'] = -data['away_points_per_play'] - data['home_opponent_points_per_play']
-        updated_data['away_yards_per_play'] = -data['away_yards_per_play'] - data['home_opponent_yards_per_play']
-        updated_data['away_yards_per_rush'] = -data['away_yards_per_rush'] - data['home_opponent_yards_per_rush']
-        updated_data['away_yards_per_pass'] = -data['away_yards_per_pass'] - data['home_opponent_yards_per_pass']
-        updated_data['home_points_per_play'] = data['home_points_per_play'] + data['away_opponent_points_per_play']
-        updated_data['home_yards_per_play'] = data['home_yards_per_play'] + data['away_opponent_yards_per_play']
-        updated_data['home_yards_per_rush'] = data['home_yards_per_rush'] + data['away_opponent_yards_per_rush']
-        updated_data['home_yards_per_pass'] = data['home_yards_per_pass'] + data['away_opponent_yards_per_pass']
-        
-        return updated_data
-
-    def pull_schedule(self, week, year):
-        '''
-        Pull all games betweena given time period
-        '''
-        schedule = Boxscores(week, year).games
-        full_schedule = list(schedule.values())
-        full_schedule = [game for day in full_schedule for game in day]
-        full_schedule = pd.DataFrame(full_schedule)
-
-        ##Clean up data by removing bad data and duplicates
-        full_schedule = full_schedule[full_schedule['away_abbr'] != full_schedule['home_abbr']]
-        full_schedule.drop_duplicates(subset=['boxscore'], inplace=True)
-
-        schedules = []
-        team_list = list(set(full_schedule['away_abbr']).union(set(full_schedule['home_abbr'])))
-        ##Pull individual schedules for other factors that are not in the boxscore
-        for team_abr in team_list:
-            team_schedule = Schedule(team_abr, year).dataframe.sort_values(['week'])
-            team_schedule['team_abbr'] = team_abr.lower()
-            team_schedule['days_between_games'] = team_schedule['datetime'].diff() / np.timedelta64(1, 'D')
-            team_schedule['neutral'] = np.where(team_schedule['location'] == 'Neutral', 1, 0)
-            schedules.append(team_schedule[['date', 'team_abbr','boxscore_index', 'neutral', 'days_between_games']])
-
-        schedules = pd.concat(schedules)
-        schedules.rename(columns={'boxscore_index':'boxscore'}, inplace=True)
-
-        ##Merge location and days_between_games
-        full_schedule = full_schedule.merge(schedules[['boxscore', 'neutral', 'date']].drop_duplicates(), how='left')
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'boxscore', 'days_between_games']], how='left',\
-                                            left_on=['away_abbr', 'boxscore'], right_on=['team_abbr', 'boxscore'])
-        full_schedule.rename(columns={'days_between_games':'away_off_days'}, inplace=True)
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'boxscore', 'days_between_games']], how='left',\
-                                            left_on=['home_abbr', 'boxscore'], right_on=['team_abbr', 'boxscore'])
-        full_schedule.rename(columns={'days_between_games':'home_off_days'}, inplace=True)
-
-        ##For model-building, create categorical variables for short rest and long rest by team
-        ##Short rest is considered less than a full week off
-        ##Long rest is considered more than 10 days between games
-        full_schedule['away_short_rest'] = np.where(full_schedule['away_off_days'] < 6, 1, 0)
-        full_schedule['away_long_rest'] = np.where(full_schedule['away_off_days'] > 10, 1, 0)
-        full_schedule['home_short_rest'] = np.where(full_schedule['home_off_days'] < 6, 1, 0)
-        full_schedule['home_long_rest'] = np.where(full_schedule['home_off_days'] > 10, 1, 0)
-
-        ##Drop unnecessary columns
-        full_schedule.drop(columns=['team_abbr_x', 'team_abbr_y'], inplace=True)
-
-        full_schedule = full_schedule[['date', 'away_abbr', 'away_name', 'home_abbr', 'home_name',\
-                                                     'neutral', 'away_short_rest', 'away_long_rest',\
-                                                                                        'home_short_rest', 'home_long_rest']]
-        return full_schedule
-
-    def pull_historical_schedule(self, year):
-        '''
-        Pulls all games from a NFL season
-        '''
-        yearly_schedule = Boxscores(1, year, 21).games
-        full_schedule = list(yearly_schedule.values())
-        full_schedule = [game for day in full_schedule for game in day]
-        full_schedule = pd.DataFrame(full_schedule)
-        full_schedule['year'] = year
-
-        schedules = []
-        team_list = list(set(full_schedule['away_abbr']).union(set(full_schedule['home_abbr'])))
-        ##Pull individual schedules for other factors that are not in the boxscore
-        for team_abr in team_list:
-            try:
-                team_schedule = Schedule(team_abr, year).dataframe.sort_values(['week'])
-                team_schedule['team_abbr'] = team_abr.lower()
-                team_schedule['days_between_games'] = team_schedule['datetime'].diff() / np.timedelta64(1, 'D')
-                team_schedule['neutral'] = np.where(team_schedule['location'] == 'Neutral', 1, 0)
-                schedules.append(team_schedule[['date', 'team_abbr','boxscore_index', 'neutral', 'days_between_games']])
-            except:
-                ##In these cases, the team may be new to D1 and was not playing during the season we are pulling
-                ##Therefore, we skip this team and continue looping through other teams
+    def _fetch_espn_scoreboard_day(self, day_dt):
+        date_str = pd.to_datetime(day_dt).strftime("%Y%m%d")
+        resp = self.session.get(
+            f"{ESPN_NFL_BASE_URL}/scoreboard",
+            params={"dates": date_str},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        games = []
+        for ev in resp.json().get("events", []):
+            comp = ev["competitions"][0]
+            competitors = {c["homeAway"]: c for c in comp.get("competitors", [])}
+            if "home" not in competitors or "away" not in competitors:
                 continue
 
-        schedules = pd.concat(schedules)
-        schedules.rename(columns={'boxscore_index':'boxscore'}, inplace=True)
+            home, away = competitors["home"], competitors["away"]
+            game_dt = pd.to_datetime(ev["date"], utc=True).tz_convert("US/Eastern")
+            completed = comp.get("status", {}).get("type", {}).get("completed", False)
 
-        ##Merge location and days_between_games
-        full_schedule = full_schedule.merge(schedules[['boxscore', 'neutral', 'date']].drop_duplicates(), how='left')
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'boxscore', 'days_between_games']], how='left',\
-                                            left_on=['away_abbr', 'boxscore'], right_on=['team_abbr', 'boxscore'])
-        full_schedule.rename(columns={'days_between_games':'away_off_days'}, inplace=True)
-        full_schedule = full_schedule.merge(schedules[['team_abbr', 'boxscore', 'days_between_games']], how='left',\
-                                            left_on=['home_abbr', 'boxscore'], right_on=['team_abbr', 'boxscore'])
-        full_schedule.rename(columns={'days_between_games':'home_off_days'}, inplace=True)
+            spread = np.nan
+            odds_list = comp.get("odds") or []
+            if odds_list and odds_list[0].get("spread") is not None:
+                try:
+                    # ESPN spread is negative when home is favored; negate so + = home favored
+                    spread = -float(odds_list[0]["spread"])
+                except (TypeError, ValueError):
+                    spread = np.nan
 
-        ##For model-building, create categorical variables for short rest and long rest by team
-        ##Short rest is considered less than a full week off
-        ##Long rest is considered more than 10 days between games
-        full_schedule['away_short_rest'] = np.where(full_schedule['away_off_days'] < 6, 1, 0)
-        full_schedule['away_long_rest'] = np.where(full_schedule['away_off_days'] > 10, 1, 0)
-        full_schedule['home_short_rest'] = np.where(full_schedule['home_off_days'] < 6, 1, 0)
-        full_schedule['home_long_rest'] = np.where(full_schedule['home_off_days'] > 10, 1, 0)
+            games.append(
+                {
+                    "game_id": str(ev["id"]),
+                    "datetime": game_dt.tz_localize(None),
+                    "date": _format_short_date(game_dt),
+                    "completed": completed,
+                    "neutral": int(bool(comp.get("neutralSite", False))),
+                    "away_abbr": away["team"].get("abbreviation", "").upper(),
+                    "away_name": away["team"].get("abbreviation", "").upper(),
+                    "home_abbr": home["team"].get("abbreviation", "").upper(),
+                    "home_name": home["team"].get("abbreviation", "").upper(),
+                    "espn_spread": spread,
+                }
+            )
+        return games
 
-        ##Drop unnecessary columns
-        full_schedule.drop(columns=['team_abbr_x', 'team_abbr_y'], inplace=True)
+    def pull_schedule(self, start_day, end_day, include_completed=False):
+        """Pull upcoming NFL games for [start_day, end_day] with rest days & live spreads."""
+        start_dt = pd.to_datetime(start_day).normalize()
+        end_dt = pd.to_datetime(end_day).normalize()
+        days = pd.date_range(start_dt, end_dt, freq="D")
 
-        full_schedule = full_schedule[['date', 'away_abbr', 'away_name', 'away_score', 'home_abbr', 'home_name',\
-                                                     'home_score', 'year', 'neutral', 'away_short_rest', 'away_long_rest',\
-                                                                                        'home_short_rest', 'home_long_rest']]
-        return full_schedule
+        all_games = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+            for f in as_completed([pool.submit(self._fetch_espn_scoreboard_day, d) for d in days]):
+                all_games.extend(f.result())
 
-    def create_historical_data(self, year):
-        '''
-        Creates the historical dataframe for the given year
-        Each row in the dataframe is a game with many different stats for each of the participating teams that year
-        The stats have been standardized for the given year
-        '''
-        historical_data = self.pull_historical_schedule(year)       
+        if not all_games:
+            return pd.DataFrame(
+                columns=[
+                    "away_name",
+                    "home_name",
+                    "date",
+                    "neutral",
+                    "away_short_rest",
+                    "away_long_rest",
+                    "home_short_rest",
+                    "home_long_rest",
+                    "spread",
+                ]
+            )
 
-        ##Keep only the city name for the name
-        ##Except for cities with multiple teams
-        historical_data['away_name'] = historical_data['away_name'].apply(lambda x: x.rsplit(' ', 1)[0] if x.rsplit(' ', 1)[0] not in ['Los Angeles', 'New York'] else x)
-        historical_data['home_name'] = historical_data['home_name'].apply(lambda x: x.rsplit(' ', 1)[0] if x.rsplit(' ', 1)[0] not in ['Los Angeles', 'New York'] else x)
+        df = pd.DataFrame(all_games).drop_duplicates("game_id")
+        if not include_completed:
+            df = df[~df["completed"]].copy()
+        if df.empty:
+            return df
 
-        ##Pull and merge historical advanced stats
-        ##Data is pulled from football outsiders
-        historical_advanced_stats = self.pull_football_outsiders_stats(year)
+        df["away_name"] = self.normalize_team_name(df["away_name"])
+        df["home_name"] = self.normalize_team_name(df["home_name"])
 
-        away_advanced_stats = historical_advanced_stats.copy()
-        home_advanced_stats = historical_advanced_stats.copy()
+        season = _nfl_season_for_date(start_dt)
+        nv = self._load_nflverse_games()
+        nv = nv[nv["season"] == season].copy()
+        nv["away_name"] = self.normalize_team_name(nv["away_team"])
+        nv["home_name"] = self.normalize_team_name(nv["home_team"])
+        nv["date"] = pd.to_datetime(nv["gameday"]).apply(_format_short_date)
 
-        away_advanced_stats.columns = ['away_' + str(col) for col in away_advanced_stats.columns]
-        home_advanced_stats.columns = ['home_' + str(col) for col in home_advanced_stats.columns]
+        df = df.merge(
+            nv[["date", "away_name", "home_name", "away_rest", "home_rest", "spread_line"]].drop_duplicates(
+                ["date", "away_name", "home_name"]
+            ),
+            on=["date", "away_name", "home_name"],
+            how="left",
+        )
 
-        historical_data = historical_data.merge(away_advanced_stats, how='left')
-        historical_data = historical_data.merge(home_advanced_stats, how='left')
+        df["away_short_rest"] = np.where(df["away_rest"] < 6, 1, 0)
+        df["away_long_rest"] = np.where(df["away_rest"] > 10, 1, 0)
+        df["home_short_rest"] = np.where(df["home_rest"] < 6, 1, 0)
+        df["home_long_rest"] = np.where(df["home_rest"] > 10, 1, 0)
+        df["spread"] = df["espn_spread"].combine_first(df["spread_line"])
 
-        ##Pull and merge teamrankings data
-        historical_team_rankings_data = self.pull_team_rankings_data(year)
+        return df[
+            [
+                "away_name",
+                "home_name",
+                "date",
+                "neutral",
+                "away_short_rest",
+                "away_long_rest",
+                "home_short_rest",
+                "home_long_rest",
+                "spread",
+            ]
+        ].reset_index(drop=True)
 
-        away_team_rankings = historical_team_rankings_data.copy()
-        home_team_rankings = historical_team_rankings_data.copy()
+    def pull_historical_schedule(self, year):
+        """Pull all completed games, rest days, neutral flags, and Vegas closing spreads for a season."""
+        nv = self._load_nflverse_games()
+        df = nv[(nv["season"] == year) & nv["home_score"].notna() & nv["away_score"].notna()].copy()
 
-        away_team_rankings.columns = ['away_' + str(col) for col in away_team_rankings.columns]
-        home_team_rankings.columns = ['home_' + str(col) for col in home_team_rankings.columns]
+        df["away_name"] = self.normalize_team_name(df["away_team"])
+        df["home_name"] = self.normalize_team_name(df["home_team"])
+        df["date"] = pd.to_datetime(df["gameday"]).apply(_format_short_date)
+        df["year"] = year
+        df["neutral"] = np.where(df["location"] == "Neutral", 1, 0)
+        df["away_short_rest"] = np.where(df["away_rest"] < 6, 1, 0)
+        df["away_long_rest"] = np.where(df["away_rest"] > 10, 1, 0)
+        df["home_short_rest"] = np.where(df["home_rest"] < 6, 1, 0)
+        df["home_long_rest"] = np.where(df["home_rest"] > 10, 1, 0)
+        df["close"] = pd.to_numeric(df["spread_line"], errors="coerce")
 
-        historical_data = historical_data.merge(away_team_rankings, how='left')
-        historical_data = historical_data.merge(home_team_rankings, how='left')
+        return df[
+            [
+                "away_name",
+                "away_score",
+                "home_name",
+                "home_score",
+                "date",
+                "year",
+                "neutral",
+                "away_short_rest",
+                "away_long_rest",
+                "home_short_rest",
+                "home_long_rest",
+                "close",
+            ]
+        ].reset_index(drop=True)
 
-        ##Drop all rows with nans
-        ##This is done so we can standardize the stats
-        historical_data.dropna(inplace=True)
+    def pull_nflverse_epa_stats(self, year=None):
+        """
+        Compute season-level EPA/play (net, off/def, pass/rush) AND per-play
+        efficiency (points/play, yards/play, yards/rush, net yards/pass + opponent
+        counterparts) directly from nflverse CSVs (free, zero API key, zero WAF).
+        """
+        if year is None:
+            year = _nfl_season_for_date(pd.Timestamp.today())
 
-        ##Standardize the numeric data and update in terms of strengths of both teams
-        historical_data = self.create_opponent_adjusted_stats(historical_data, 13)
+        url = NFLVERSE_TEAM_WEEK_URL.format(year=year)
+        raw_wk = pd.read_csv(url)
 
-        ##Get a result column
-        ##Home Score - Away Score (negative means away win)
-        historical_data['result'] = historical_data['home_score'] - historical_data['away_score']
+        pass_plays = raw_wk["attempts"].fillna(0) + raw_wk["sacks_suffered"].fillna(0)
+        rush_plays = raw_wk["carries"].fillna(0)
+        net_pass_yds = raw_wk["passing_yards"].fillna(0) - raw_wk["sack_yards_lost"].fillna(0).abs()
+        rush_yds = raw_wk["rushing_yards"].fillna(0)
 
-        return historical_data
+        wk = pd.DataFrame(
+            {
+                "team": raw_wk["team"],
+                "opponent_team": raw_wk["opponent_team"],
+                "passing_epa": raw_wk["passing_epa"].fillna(0),
+                "rushing_epa": raw_wk["rushing_epa"].fillna(0),
+                "total_epa": raw_wk["passing_epa"].fillna(0) + raw_wk["rushing_epa"].fillna(0),
+                "pass_plays": pass_plays,
+                "rush_plays": rush_plays,
+                "total_plays": pass_plays + rush_plays,
+                "net_pass_yds": net_pass_yds,
+                "rush_yds": rush_yds,
+                "total_yds": net_pass_yds + rush_yds,
+            }
+        )
 
-    def pull_football_outsiders_stats(self, year=None):
-        '''
-        Pulls advanced stats for a given year from football outsiders using beautifulsoup
-        Unfortunately, webscraping means that some values need to be hardcoded
-        '''
-        ##Create the urls which we will use to webscrape
-        ##Add the year to the end of the url
+        nv = self._load_nflverse_games()
+        nv_yr = nv[(nv["season"] == year) & nv["home_score"].notna() & nv["away_score"].notna()]
+        pts_home = nv_yr[["home_team", "home_score", "away_score"]].rename(
+            columns={"home_team": "team", "home_score": "pts_for", "away_score": "pts_against"}
+        )
+        pts_away = nv_yr[["away_team", "away_score", "home_score"]].rename(
+            columns={"away_team": "team", "away_score": "pts_for", "home_score": "pts_against"}
+        )
+        pts = pd.concat([pts_home, pts_away], ignore_index=True).groupby("team", as_index=False).sum()
+
+        agg_cols = [
+            "passing_epa", "rushing_epa", "total_epa",
+            "pass_plays", "rush_plays", "total_plays",
+            "net_pass_yds", "rush_yds", "total_yds",
+        ]
+        off = wk.groupby("team", as_index=False)[agg_cols].sum().merge(pts, on="team", how="left")
+        off["off_epa_play"] = off["total_epa"] / off["total_plays"].clip(lower=1)
+        off["off_pass_epa"] = off["passing_epa"] / off["pass_plays"].clip(lower=1)
+        off["off_rush_epa"] = off["rushing_epa"] / off["rush_plays"].clip(lower=1)
+        off["points_per_play"] = off["pts_for"].fillna(0) / off["total_plays"].clip(lower=1)
+        off["yards_per_play"] = off["total_yds"] / off["total_plays"].clip(lower=1)
+        off["yards_per_rush"] = off["rush_yds"] / off["rush_plays"].clip(lower=1)
+        off["yards_per_pass"] = off["net_pass_yds"] / off["pass_plays"].clip(lower=1)
+
+        deff = (
+            wk.groupby("opponent_team", as_index=False)[agg_cols]
+            .sum()
+            .rename(columns={"opponent_team": "team"})
+            .merge(pts[["team", "pts_against"]], on="team", how="left")
+        )
+        deff["def_epa_play"] = deff["total_epa"] / deff["total_plays"].clip(lower=1)
+        deff["def_pass_epa"] = deff["passing_epa"] / deff["pass_plays"].clip(lower=1)
+        deff["def_rush_epa"] = deff["rushing_epa"] / deff["rush_plays"].clip(lower=1)
+        deff["opponent_points_per_play"] = deff["pts_against"].fillna(0) / deff["total_plays"].clip(lower=1)
+        deff["opponent_yards_per_play"] = deff["total_yds"] / deff["total_plays"].clip(lower=1)
+        deff["opponent_yards_per_rush"] = deff["rush_yds"] / deff["rush_plays"].clip(lower=1)
+        deff["opponent_yards_per_pass"] = deff["net_pass_yds"] / deff["pass_plays"].clip(lower=1)
+
+        df = off[
+            [
+                "team", "off_epa_play", "off_pass_epa", "off_rush_epa",
+                "points_per_play", "yards_per_play", "yards_per_rush", "yards_per_pass",
+            ]
+        ].merge(
+            deff[
+                [
+                    "team", "def_epa_play", "def_pass_epa", "def_rush_epa",
+                    "opponent_points_per_play", "opponent_yards_per_play",
+                    "opponent_yards_per_rush", "opponent_yards_per_pass",
+                ]
+            ],
+            on="team",
+            how="inner",
+        )
+        df["net_epa_play"] = df["off_epa_play"] - df["def_epa_play"]
+        df.rename(columns={"team": "name"}, inplace=True)
+        df["name"] = self.normalize_team_name(df["name"])
+
+        num_cols = [c for c in df.columns if c != "name"]
+        df[num_cols] = (df[num_cols] - df[num_cols].mean()) / df[num_cols].std(ddof=0)
+        return df[["name"] + num_cols].reset_index(drop=True)
+
+    def _fetch_team_rankings_table(self, path, col_name, year=None, strip_record=False):
+        url = f"https://www.teamrankings.com/nfl/{path}"
         if year is not None:
-            dvoa = 'https://www.footballoutsiders.com/stats/teameff/' + str(year)
-            off_dvoa = 'https://www.footballoutsiders.com/stats/teamoff/' + str(year)
-            def_dvoa = 'https://www.footballoutsiders.com/stats/teamdef/' + str(year)
-            st_dvoa = 'https://www.footballoutsiders.com/stats/teamst/' + str(year)
-        else:
-            dvoa = 'https://www.footballoutsiders.com/stats/teameff'
-            off_dvoa = 'https://www.footballoutsiders.com/stats/teamoff'
-            def_dvoa = 'https://www.footballoutsiders.com/stats/teamdef'
-            st_dvoa = 'https://www.footballoutsiders.com/stats/teamst'
-
-        dvoa = requests.get(dvoa).text
-        soup = BeautifulSoup(dvoa, 'lxml')
-
-        ##Find the table on the page
-        ##The most recent table has a different class than past tables
-        ##If the first find does not work, we try the second
-        dvoa_table = soup.find('table', attrs={'class':'sticky-headers sortable stats'})
-        if dvoa_table is None:
-            dvoa_table = soup.find('table', attrs={'class':'stats'})
-
-        ##Parse through the rows of the table to create the dataframe
-        dvoa_table_rows = dvoa_table.find_all('tr')
-        res = []
-        for tr in dvoa_table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        historical_fo_stats = pd.DataFrame(res)
-        
-        ##Format the data based on how the data is returned
-        ##Also remove bad rows
-        if year is None or year >= 2018:            
-            historical_fo_stats = historical_fo_stats[[1,2,7,9,11]]
-        else:
-            historical_fo_stats = historical_fo_stats[[1,2,6,8,10]]
-            historical_fo_stats = historical_fo_stats.iloc[1:]
-            historical_fo_stats.columns = ['abbr', 'dvoa', 'off_dvoa', 'def_dvoa', 'sp_dvoa',]
-            historical_fo_stats = historical_fo_stats[historical_fo_stats['off_dvoa'] != 'OFF.RANK']
-
-        historical_fo_stats.columns = ['abbr', 'dvoa', 'off_dvoa', 'def_dvoa', 'sp_dvoa',]
-        historical_fo_stats = historical_fo_stats[~historical_fo_stats['dvoa'].isin(['LASTYEAR', 'LAST\n\t\t\tYEAR'])]
-
-        ##DVOA is formatted as a percentage so we need to convert it to a float and add 1 to get the percent better than the median team
-        historical_fo_stats.iloc[:, 1:] = historical_fo_stats.iloc[:, 1:].apply(lambda x: x.str.rstrip('%').astype('float') / 100.0)
-        historical_fo_stats.iloc[:,1:] = historical_fo_stats.iloc[:,1:].apply(pd.to_numeric, errors='coerce')
-        historical_fo_stats.iloc[:,1:] = (historical_fo_stats.iloc[:,1:] - np.mean(historical_fo_stats.iloc[:,1:], axis=0))/(np.std(historical_fo_stats.iloc[:,1:], axis=0))
-
-        ##Make abbreviations lowercase to match the format from sportsreference
-        historical_fo_stats['abbr'] = historical_fo_stats['abbr'].str.lower()
-
-        ##Replace the correct team names to ensure we can merge with the schedule data
-        historical_fo_stats['abbr'].replace(self.team_replace, inplace=True)
-
-        return historical_fo_stats
+            url = f"{url}?date={year + 1}-02-01"
+        resp = self.session.get(url, timeout=15)
+        resp.raise_for_status()
+        table = BeautifulSoup(resp.text, "lxml").find(
+            "table", attrs={"class": "tr-table datatable scrollable"}
+        )
+        if table is None:
+            raise RuntimeError(f"Could not find TeamRankings NFL table at {url}")
+        rows = [
+            (tds[1], tds[2])
+            for tr in table.find_all("tr")
+            for tds in [[td.get_text(strip=True) for td in tr.find_all("td") if td.get_text(strip=True)]]
+            if len(tds) >= 3 and tds[2] != "--"
+        ]
+        df = pd.DataFrame(rows, columns=["name", col_name])
+        if strip_record:
+            df["name"] = df["name"].str.replace(r"\s*\(\d+-\d+(?:-\d+)?\)$", "", regex=True).str.strip()
+        df[col_name] = df[col_name].str.rstrip("%").astype(float)
+        return df
 
     def pull_team_rankings_data(self, year=None):
-        '''
-        Pull and compile all data from teamrankings.com
-        '''
-        ##Pull team rankings predictive rankings
-        team_rankings_data = self.pull_team_rankings_ratings(year)
-
-        ##Pull strength of schedule
-        strength_of_schedule = self.pull_strength_of_schedule(year)
-        team_rankings_data = team_rankings_data.merge(strength_of_schedule, how='left')
-
-        ##Pull all stats
-        points_per_play = self.pull_points_per_play(year)
-        team_rankings_data = team_rankings_data.merge(points_per_play, how='left')
-
-        opponent_points_per_play = self.pull_opponent_points_per_play(year)
-        team_rankings_data = team_rankings_data.merge(opponent_points_per_play, how='left')
-
-        yards_per_play = self.pull_yards_per_play(year)
-        team_rankings_data = team_rankings_data.merge(yards_per_play, how='left')
-
-        opponent_yards_per_play = self.pull_opponent_yards_per_play(year)
-        team_rankings_data = team_rankings_data.merge(opponent_yards_per_play, how='left')
-
-        yards_per_rush = self.pull_yards_per_rush(year)
-        team_rankings_data = team_rankings_data.merge(yards_per_rush, how='left')
-
-        opponent_yards_per_rush = self.pull_opponent_yards_per_rush(year)
-        team_rankings_data = team_rankings_data.merge(opponent_yards_per_rush, how='left')
-
-        yards_per_pass = self.pull_yards_per_pass(year)
-        team_rankings_data = team_rankings_data.merge(yards_per_pass, how='left')
-
-        opponent_yards_per_pass = self.pull_opponent_yards_per_pass(year)
-        team_rankings_data = team_rankings_data.merge(opponent_yards_per_pass, how='left')
-
-        ##Update the team names to match the base
-        team_rankings_data['name'].replace(self.team_replace, inplace=True)
-
-        ##Normalize the data
-        team_rankings_data.iloc[:,1:] = team_rankings_data.iloc[:,1:].apply(pd.to_numeric) 
-        team_rankings_data.iloc[:,1:] = (team_rankings_data.iloc[:,1:] - np.mean(team_rankings_data.iloc[:,1:], axis=0))/(np.std(team_rankings_data.iloc[:,1:], axis=0))
-
-        return team_rankings_data
-
-
-    def pull_team_rankings_ratings(self, year=None):
-        '''
-        Pull team rankings predicted rankings for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/ranking/predictive-by-other?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/ranking/predictive-by-other'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        team_rankings = pd.DataFrame(res)
-        team_rankings = team_rankings[[1,2]]
-        team_rankings.columns = ['name', 'team_rankings_rating']
-        
-        ##Get rid of the record in the team name
-        team_rankings['name'] = team_rankings['name'].apply(lambda x: x[0:x.rfind(' (')])
-
-        return team_rankings
-
-    def pull_strength_of_schedule(self, year=None):
-        '''
-        Pull strength of schedule for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/ranking/schedule-strength-by-other?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/ranking/schedule-strength-by-other'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        strengh_of_schedule = pd.DataFrame(res)
-        strengh_of_schedule = strengh_of_schedule[[1,2]]
-        strengh_of_schedule.columns = ['name', 'strength_of_schedule']
-        
-        ##Get rid of the record in the team name
-        strengh_of_schedule['name'] = strengh_of_schedule['name'].apply(lambda x: x[0:x.rfind(' (')])
-
-        return strengh_of_schedule
-
-    def pull_points_per_play(self, year=None):
-        '''
-        Pull points per play for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/points-per-play?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/points-per-play'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        points_per_play = pd.DataFrame(res)
-        points_per_play = points_per_play[[1,2]]
-        points_per_play.columns = ['name', 'points_per_play']
-
-        return points_per_play
-
-    def pull_opponent_points_per_play(self, year=None):
-        '''
-        Pull opponent points per play for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-points-per-play?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-points-per-play'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        opponent_points_per_play = pd.DataFrame(res)
-        opponent_points_per_play = opponent_points_per_play[[1,2]]
-        opponent_points_per_play.columns = ['name', 'opponent_points_per_play']
-
-        return opponent_points_per_play
-
-    def pull_yards_per_play(self, year=None):
-        '''
-        Pull yards per play for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/yards-per-play?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/yards-per-play'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        yards_per_play = pd.DataFrame(res)
-        yards_per_play = yards_per_play[[1,2]]
-        yards_per_play.columns = ['name', 'yards_per_play']
-
-        return yards_per_play
-
-    def pull_opponent_yards_per_play(self, year=None):
-        '''
-        Pull opponent yards per play for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-yards-per-play?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-yards-per-play'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        opponent_yards_per_play = pd.DataFrame(res)
-        opponent_yards_per_play = opponent_yards_per_play[[1,2]]
-        opponent_yards_per_play.columns = ['name', 'opponent_yards_per_play']
-
-        return opponent_yards_per_play
-
-    def pull_yards_per_rush(self, year=None):
-        '''
-        Pull yards per rush for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/yards-per-rush-attempt?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/yards-per-rush-attempt'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        yards_per_rush = pd.DataFrame(res)
-        yards_per_rush = yards_per_rush[[1,2]]
-        yards_per_rush.columns = ['name', 'yards_per_rush']
-
-        return yards_per_rush
-
-    def pull_opponent_yards_per_rush(self, year=None):
-        '''
-        Pull opponent yards per rush for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-yards-per-rush-attempt?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-yards-per-rush-attempt'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        opponent_yards_per_rush = pd.DataFrame(res)
-        opponent_yards_per_rush = opponent_yards_per_rush[[1,2]]
-        opponent_yards_per_rush.columns = ['name', 'opponent_yards_per_rush']
-
-        return opponent_yards_per_rush
-
-    def pull_yards_per_pass(self, year=None):
-        '''
-        Pull yards per pass for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/yards-per-pass-attempt?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/yards-per-pass-attempt'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        yards_per_pass = pd.DataFrame(res)
-        yards_per_pass = yards_per_pass[[1,2]]
-        yards_per_pass.columns = ['name', 'yards_per_pass']
-
-        return yards_per_pass
-
-    def pull_opponent_yards_per_pass(self, year=None):
-        '''
-        Pull opponent yards per pass for the specified year
-        '''
-        if year is not None:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-yards-per-pass-attempt?date=' + str(year+1)+ '-02-01'
-        else:
-            url = 'https://www.teamrankings.com/nfl/stat/opponent-yards-per-pass-attempt'
-        url = requests.get(url).text
-        soup = BeautifulSoup(url, 'lxml')
-
-        table = soup.find('table', attrs={'class':'tr-table datatable scrollable'})
-
-        ##Parse through the rows of the table to create the dataframe
-        table_rows = table.find_all('tr')
-        res = []
-        for tr in table_rows:
-            td = tr.find_all('td')
-            row = [tr.text.strip() for tr in td if tr.text.strip()]
-            if row:
-                res.append(row)
-
-        opponent_yards_per_pass = pd.DataFrame(res)
-        opponent_yards_per_pass = opponent_yards_per_pass[[1,2]]
-        opponent_yards_per_pass.columns = ['name', 'opponent_yards_per_pass']
-
-        return opponent_yards_per_pass
-
-    def pull_historical_odds(self, subfolder_name=r'\NFL Historical Odds'):
-        '''
-        Compile historical closing odds from excel files from sportsbookreviewsonline
-        The historical odds were stored as xlsx files
-        Note: subfolder name containing the xlsx files must be passed in
-        '''
-
-        ##Navigate to the sub folder and get list all files
-        odds_path = os.getcwd() + subfolder_name
-        odds_files = pd.Series(os.listdir(odds_path))
-
-        odds = []
-        for odds_file in odds_files:
-            ##Get the year from the odds_file name
-            year = int(re.search('\d{4}', odds_file)[0])
-
-            ##Read in the odds file
-            raw_odds = pd.read_excel(os.path.join(odds_path, odds_file))
-            raw_odds.columns = raw_odds.columns.str.lower()
-
-            ##Ensure that the closing odds are numeric
-            ##Also change pick-em lines to 0
-            raw_odds['close'] = np.where(raw_odds['close'] == 'pk', 0, raw_odds['close'])
-            raw_odds['close'] = pd.to_numeric(raw_odds['close'], errors='coerce')
-
-            ##Split the team name by capital letters
-            ##i.e. TexasState to Texas State
-            raw_odds['team'] = raw_odds['team'].apply(lambda x: re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', str(x)))
-
-            ##Visitors have even numbered indices and home have odd number
-            visitors = raw_odds[::2].copy().reset_index(drop=True)
-            home = raw_odds[1::2].copy().reset_index(drop=True)
-            visitors.rename(columns={'team':'away_name', 'close':'away_close'}, inplace=True)
-            home.rename(columns={'team':'home_name', 'close':'home_close'}, inplace=True)
-            visitors = visitors[['date', 'away_name', 'away_close']]
-            home = home[['home_name', 'home_close']]
-
-            ##Merge the games into one dataframe
-            odds_subset = visitors.merge(home, left_index=True, right_index=True)
-            odds_subset.dropna(inplace=True)
-
-            ##The smaller closing line is the spread rather than the O/U
-            ##If the away team is favored, negate the line to match with normal format
-            odds_subset['close'] = np.where(odds_subset['away_close'] <= odds_subset['home_close'], -odds_subset['away_close'], odds_subset['home_close'])
-            odds_subset = odds_subset[['away_name', 'home_name', 'close', 'date']]
-            odds_subset['year'] = year
-            odds_subset['date'] = pd.to_datetime(odds_subset['date'].astype(str).str.zfill(4), format='%m%d').apply(lambda x: x.strftime('%B %d').replace(" 0", " "))
-            odds.append(odds_subset)
-
-        odds = pd.concat(odds)
-
-        ##Update team names so we can merge the odds into the main dataframe
-        odds['away_name'].replace(self.team_replace, inplace=True)
-        odds['home_name'].replace(self.team_replace, inplace=True)
-
-        return odds
-
-    def pull_current_odds(self, start_date, end_date):
-        '''
-        Pull all odds for a given timeframe
-        '''
-
-        ##We can only pull for future games
-        ##Therefore, we change the start date to today if the start_date is in the past
-        if start_date < pd.to_datetime('today'):
-            start_date = pd.to_datetime('today')
-
-        date_range = pd.date_range(start_date, end_date+pd.DateOffset(1))
-        full_odds = []
-        for day in date_range:
-            daily_odds = self.pull_current_daily_odds(day)
-            full_odds.append(daily_odds)
-
-        full_odds = pd.concat(full_odds)
-
-        ##Update team names
-        full_odds['home_name'].replace(self.team_replace, inplace=True)
-        full_odds['away_name'].replace(self.team_replace, inplace=True)
-
-        return full_odds
-
-    def pull_current_daily_odds(self, games_date):
-        '''
-        Pull all odds for the given date from sportsbook review
-        '''
-        url = 'https://classic.sportsbookreview.com/betting-odds/nfl-football/?date=' + str(games_date.date()).replace('-','')
-        raw_data = requests.get(url)
-        soup = BeautifulSoup(raw_data.text, 'html.parser')
-        if soup.find_all('div', id='OddsGridModule_16'):
-            soup = soup.find_all('div', id='OddsGridModule_16')[0]
-        else:
-            ##No games on this day
-            return pd.DataFrame(columns=['away_name', 'home_name', 'spread'])
-
-        daily_odds = self.parse_daily_odds(soup)
-
-        ##Remove the + from the spread column and convert strings to numerics
-        daily_odds['spread'] = pd.to_numeric(daily_odds['spread'].map(lambda x: x.strip('+')))
-
-        return daily_odds
-        
-
-    def parse_daily_odds(self, soup):
-        '''
-        Take the raw odds and convert to dataframe
-        '''
-        ##Initialize the dataframe
-        daily_odds = []
-        number_of_games = len(soup.find_all('div', attrs = {'class':'el-div eventLine-rotation'}))
-        for game_number in range(number_of_games):
-            away_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[0].get_text().strip()
-            home_team = soup.find_all('div', attrs = {'class':'el-div eventLine-team'})[game_number].find_all('div')[1].get_text().strip()
-            ##Pinnacle is Book ID 238
-            away_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[0].get_text().strip()
-            home_odds = soup.find_all('div', attrs = {'class':'el-div eventLine-book', 'rel':'238'})[game_number].find_all('div')[1].get_text().strip()
-            ##Get the spread number only so we only need the away team's odds
-            odds = away_odds.replace(u'\xa0',' ').replace(u'\xbd','.5')
-            odds = odds[:odds.find(' ')]
-            daily_odds.append({'away_name':away_team, 'home_name':home_team, 'spread':odds})
-
-        daily_odds = pd.DataFrame(daily_odds)
-        return daily_odds
+        specs = [
+            ("ranking/predictive-by-other", "team_rankings_rating", True),
+            ("ranking/schedule-strength-by-other", "strength_of_schedule", True),
+        ]
+        results = {}
+        with ThreadPoolExecutor(max_workers=len(specs)) as pool:
+            fmap = {
+                pool.submit(self._fetch_team_rankings_table, p, c, year, sr): c
+                for p, c, sr in specs
+            }
+            for f in as_completed(fmap):
+                results[fmap[f]] = f.result()
+
+        ordered = [s[1] for s in specs]
+        df = results[ordered[0]]
+        for col in ordered[1:]:
+            df = df.merge(results[col], on="name", how="left")
+
+        df["name"] = self.normalize_team_name(df["name"])
+        df[ordered] = df[ordered].apply(pd.to_numeric, errors="coerce")
+        df.dropna(subset=ordered, inplace=True)
+        df[ordered] = (df[ordered] - df[ordered].mean()) / df[ordered].std(ddof=0)
+        return df.reset_index(drop=True)
+
+    def create_opponent_adjusted_stats(self, data, meta_cols):
+        u = data[meta_cols].copy()
+
+        u["net_epa"] = data["home_net_epa_play"] - data["away_net_epa_play"]
+        u["home_off_epa_matchup"] = data["home_off_epa_play"] + data["away_def_epa_play"]
+        u["away_off_epa_matchup"] = -data["away_off_epa_play"] - data["home_def_epa_play"]
+        u["home_pass_epa_matchup"] = data["home_off_pass_epa"] + data["away_def_pass_epa"]
+        u["away_pass_epa_matchup"] = -data["away_off_pass_epa"] - data["home_def_pass_epa"]
+        u["home_rush_epa_matchup"] = data["home_off_rush_epa"] + data["away_def_rush_epa"]
+        u["away_rush_epa_matchup"] = -data["away_off_rush_epa"] - data["home_def_rush_epa"]
+
+        u["team_rankings_rating"] = (
+            data["home_team_rankings_rating"] - data["away_team_rankings_rating"]
+        )
+        u["strength_of_schedule"] = (
+            data["home_strength_of_schedule"] - data["away_strength_of_schedule"]
+        )
+        u["away_points_per_play"] = (
+            -data["away_points_per_play"] - data["home_opponent_points_per_play"]
+        )
+        u["away_yards_per_play"] = (
+            -data["away_yards_per_play"] - data["home_opponent_yards_per_play"]
+        )
+        u["away_yards_per_rush"] = (
+            -data["away_yards_per_rush"] - data["home_opponent_yards_per_rush"]
+        )
+        u["away_yards_per_pass"] = (
+            -data["away_yards_per_pass"] - data["home_opponent_yards_per_pass"]
+        )
+        u["home_points_per_play"] = (
+            data["home_points_per_play"] + data["away_opponent_points_per_play"]
+        )
+        u["home_yards_per_play"] = (
+            data["home_yards_per_play"] + data["away_opponent_yards_per_play"]
+        )
+        u["home_yards_per_rush"] = (
+            data["home_yards_per_rush"] + data["away_opponent_yards_per_rush"]
+        )
+        u["home_yards_per_pass"] = (
+            data["home_yards_per_pass"] + data["away_opponent_yards_per_pass"]
+        )
+        return u
+
+    def _merge_team_features(self, games_df, year=None):
+        epa = self.pull_nflverse_epa_stats(year)
+        tr = self.pull_team_rankings_data(year)
+        return (
+            games_df.merge(epa.add_prefix("away_"), on="away_name", how="left")
+            .merge(epa.add_prefix("home_"), on="home_name", how="left")
+            .merge(tr.add_prefix("away_"), on="away_name", how="left")
+            .merge(tr.add_prefix("home_"), on="home_name", how="left")
+        )
+
+    def create_dataframe(self, start_day, end_day):
+        data = self.pull_schedule(start_day, end_day)
+        if data.empty:
+            return data
+
+        meta_cols = [
+            "away_name",
+            "home_name",
+            "date",
+            "neutral",
+            "away_short_rest",
+            "away_long_rest",
+            "home_short_rest",
+            "home_long_rest",
+            "spread",
+        ]
+        merged = self._merge_team_features(data, year=None)
+        feature_cols = [c for c in merged.columns if c not in meta_cols]
+        merged.dropna(subset=feature_cols, inplace=True)
+        return self.create_opponent_adjusted_stats(merged, meta_cols).reset_index(drop=True)
+
+    def create_historical_data(self, year):
+        df = self.pull_historical_schedule(year)
+        meta_cols = [
+            "away_name",
+            "away_score",
+            "home_name",
+            "home_score",
+            "date",
+            "year",
+            "neutral",
+            "away_short_rest",
+            "away_long_rest",
+            "home_short_rest",
+            "home_long_rest",
+            "close",
+        ]
+        merged = self._merge_team_features(df, year=year)
+        feature_cols = [c for c in merged.columns if c not in meta_cols]
+        merged.dropna(subset=feature_cols, inplace=True)
+        out = self.create_opponent_adjusted_stats(merged, meta_cols)
+        out["result"] = out["home_score"] - out["away_score"]
+        return out.dropna(subset=["result"]).reset_index(drop=True)
+
+    def create_historical_dataframe(self, first_year=2010, last_year=2025):
+        full_data = pd.concat(
+            [self.create_historical_data(y) for y in range(first_year, last_year + 1)],
+            ignore_index=True,
+        )
+        full_data.to_csv("historical_nfl_data_full.csv", index=False)
+        model_df = full_data.drop(
+            columns=["away_name", "home_name", "home_score", "away_score", "date"]
+        )
+        model_df.to_csv("historical_nfl_data.csv", index=False)
+        return model_df
