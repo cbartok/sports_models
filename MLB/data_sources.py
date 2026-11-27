@@ -8,6 +8,7 @@ Sources:
 
 import io
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
@@ -39,68 +40,115 @@ def _fetch_csv_cached(url: str, cache_name: str) -> pd.DataFrame:
 
 
 def load_savant_data(season: int) -> dict[str, dict]:
-    urls = {
-        "bat_x": f"https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=batter&year={season}&position=&team=&min=1&csv=true",
-        "pit_x": f"https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=pitcher&year={season}&position=&team=&min=1&csv=true",
-        "bsr": f"https://baseballsavant.mlb.com/leaderboard/baserunning?year={season}&min=1&csv=true",
-        "oaa": f"https://baseballsavant.mlb.com/leaderboard/outs_above_average?type=Fielder&startYear={season}&endYear={season}&split=yes&team=&range=year&min=1&pos=&roles=&viz=hide&csv=true",
-        "framing": f"https://baseballsavant.mlb.com/leaderboard/catcher-framing?year={season}&csv=true",
-    }
+    """
+    Build 4-season Statcast Marcel+ forward projections (T, T-1, T-2, T-3) with
+    recency weights (6, 5, 4, 3) fetched concurrently from Baseball Savant.
+    """
+    year_weights = {0: 6.0, 1: 5.0, 2: 4.0, 3: 3.0}
+    tasks = []
+    for offset, w in year_weights.items():
+        yr = season - offset
+        tasks.append((yr, w, "bat_x", f"https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=batter&year={yr}&position=&team=&min=1&csv=true"))
+        tasks.append((yr, w, "pit_x", f"https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=pitcher&year={yr}&position=&team=&min=1&csv=true"))
+        tasks.append((yr, w, "bsr", f"https://baseballsavant.mlb.com/leaderboard/baserunning?year={yr}&min=1&csv=true"))
+        tasks.append((yr, w, "oaa", f"https://baseballsavant.mlb.com/leaderboard/outs_above_average?type=Fielder&startYear={yr}&endYear={yr}&split=yes&team=&range=year&min=1&pos=&roles=&viz=hide&csv=true"))
+        tasks.append((yr, w, "framing", f"https://baseballsavant.mlb.com/leaderboard/catcher-framing?year={yr}&csv=true"))
 
-    def _load_or_prev(key, name):
+    def _get(item):
+        yr, w, kind, url = item
         try:
-            df = _fetch_csv_cached(urls[key], f"savant_{name}_{season}.csv")
-            if len(df) >= 50:
-                return df
+            df = _fetch_csv_cached(url, f"savant_{kind}_{yr}.csv")
+            return (yr, w, kind, df)
         except Exception:
-            pass
-        prev_url = urls[key].replace(f"year={season}", f"year={season - 1}").replace(
-            f"startYear={season}&endYear={season}", f"startYear={season - 1}&endYear={season - 1}"
-        )
-        return _fetch_csv_cached(prev_url, f"savant_{name}_{season - 1}.csv")
+            return (yr, w, kind, pd.DataFrame())
 
-    bat_df = _load_or_prev("bat_x", "bat_x")
-    pit_df = _load_or_prev("pit_x", "pit_x")
-    bsr_df = _load_or_prev("bsr", "bsr")
-    oaa_df = _load_or_prev("oaa", "oaa")
-    frm_df = _load_or_prev("framing", "framing")
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        results = list(pool.map(_get, tasks))
 
-    bat_xwoba = {}
-    for _, r in bat_df.iterrows():
-        if pd.notna(r.get("player_id")) and pd.notna(r.get("est_woba")):
-            bat_xwoba[int(r["player_id"])] = {
-                "pa": float(r.get("pa", 0)),
-                "xwoba": float(r["est_woba"]),
-                "woba": float(r["woba"]) if pd.notna(r.get("woba")) else float(r["est_woba"]),
-            }
+    bat_acc, pit_acc, bsr_acc, oaa_acc, frm_acc = {}, {}, {}, {}, {}
 
-    pit_xera = {}
-    for _, r in pit_df.iterrows():
-        if pd.notna(r.get("player_id")) and pd.notna(r.get("xera")):
-            pit_xera[int(r["player_id"])] = {
-                "pa": float(r.get("pa", 0)),
-                "xera": float(r["xera"]),
-                "xwoba_allowed": float(r["est_woba"]) if pd.notna(r.get("est_woba")) else 0.312,
-            }
+    for yr, w, kind, df in results:
+        if df.empty:
+            continue
+        if kind == "bat_x":
+            for _, r in df.iterrows():
+                pid, xw, pa = r.get("player_id"), r.get("est_woba"), r.get("pa", 0)
+                if pd.isna(pid) or pd.isna(xw) or pd.isna(pa) or pa <= 0:
+                    continue
+                pid = int(pid)
+                woba = float(r["woba"]) if pd.notna(r.get("woba")) else float(xw)
+                blend = max(0.150, min(0.550, 0.65 * float(xw) + 0.35 * woba))
+                wp = w * float(pa)
+                a = bat_acc.setdefault(pid, [0.0, 0.0, 0.0, 0.0])
+                a[0] += wp * blend
+                a[1] += wp
+                a[2] += wp * float(xw)
+                a[3] += wp * woba
+        elif kind == "pit_x":
+            for _, r in df.iterrows():
+                pid, xera, pa = r.get("player_id"), r.get("xera"), r.get("pa", 0)
+                if pd.isna(pid) or pd.isna(xera) or pd.isna(pa) or pa <= 0:
+                    continue
+                pid = int(pid)
+                clamped = max(1.50, min(7.50, float(xera)))
+                ip_eq = float(pa) / 4.25
+                wi = w * ip_eq
+                a = pit_acc.setdefault(pid, [0.0, 0.0])
+                a[0] += wi * clamped
+                a[1] += wi
+        elif kind == "bsr":
+            for _, r in df.iterrows():
+                pid, rr = r.get("entity_id"), r.get("runner_runs")
+                if pd.isna(pid) or pd.isna(rr):
+                    continue
+                pid = int(pid)
+                a = bsr_acc.setdefault(pid, [0.0, 0.0])
+                a[0] += w * float(rr)
+                a[1] += w
+        elif kind == "oaa":
+            per_yr = {}
+            for _, r in df.iterrows():
+                pid, frp = r.get("player_id"), r.get("fielding_runs_prevented")
+                if pd.isna(pid) or pd.isna(frp):
+                    continue
+                pid = int(pid)
+                per_yr[pid] = per_yr.get(pid, 0.0) + float(frp)
+            for pid, frp in per_yr.items():
+                a = oaa_acc.setdefault(pid, [0.0, 0.0])
+                a[0] += w * frp
+                a[1] += w
+        elif kind == "framing":
+            for _, r in df.iterrows():
+                pid, rv, pitches = r.get("id"), r.get("rv_tot"), r.get("pitches", 0)
+                if pd.isna(pid) or pd.isna(rv) or pd.isna(pitches):
+                    continue
+                pid = int(pid)
+                a = frm_acc.setdefault(pid, [0.0, 0.0])
+                a[0] += w * float(rv)
+                a[1] += w * float(pitches)
 
-    baserunning = {}
-    for _, r in bsr_df.iterrows():
-        if pd.notna(r.get("entity_id")) and pd.notna(r.get("runner_runs")):
-            baserunning[int(r["entity_id"])] = float(r["runner_runs"])
-
-    fielding_oaa = {}
-    for _, r in oaa_df.iterrows():
-        if pd.notna(r.get("player_id")) and pd.notna(r.get("fielding_runs_prevented")):
-            pid = int(r["player_id"])
-            fielding_oaa[pid] = fielding_oaa.get(pid, 0.0) + float(r["fielding_runs_prevented"])
-
-    catcher_framing = {}
-    for _, r in frm_df.iterrows():
-        if pd.notna(r.get("id")) and pd.notna(r.get("rv_tot")):
-            catcher_framing[int(r["id"])] = {
-                "pitches": float(r.get("pitches", 0)),
-                "rv_tot": float(r["rv_tot"]),
-            }
+    bat_xwoba = {
+        pid: {
+            "pa": den / 6.0,
+            "xwoba": xw_num / den,
+            "woba": w_num / den,
+            "marcel_woba": num / den,
+        }
+        for pid, (num, den, xw_num, w_num) in bat_acc.items()
+        if den > 0
+    }
+    pit_xera = {
+        pid: {"pa": (den / 6.0) * 4.25, "eff_ip": den / 6.0, "xera": num / den}
+        for pid, (num, den) in pit_acc.items()
+        if den > 0
+    }
+    baserunning = {pid: num / den for pid, (num, den) in bsr_acc.items() if den > 0}
+    fielding_oaa = {pid: num / den for pid, (num, den) in oaa_acc.items() if den > 0}
+    catcher_framing = {
+        pid: {"pitches": den / 6.0, "rv_tot": num / 6.0}
+        for pid, (num, den) in frm_acc.items()
+        if den > 0
+    }
 
     return {
         "bat_xwoba": bat_xwoba,
@@ -167,6 +215,7 @@ def fetch_people_platoon_and_meta(player_ids: list[int], season: int) -> dict[in
                         splits_map[code] = sp.get("stat", {})
             result[pid] = {
                 "fullName": p.get("fullName", "Unknown"),
+                "currentAge": int(p.get("currentAge") or 28),
                 "batSide": p.get("batSide", {}).get("code", "R"),
                 "pitchHand": p.get("pitchHand", {}).get("code", "R"),
                 "splits": splits_map,

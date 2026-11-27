@@ -139,14 +139,20 @@ def estimate_batter_raa_per_pa(
     else:
         raw_woba, denom_pa = calc_raw_woba(bat_stats)
         raw_woba = max(0.150, min(0.550, raw_woba))
+        meta_age = people_meta.get(pid, {}).get("currentAge", 28)
+        age_woba_delta = 0.002 * (29 - meta_age) if meta_age < 29 else -0.0025 * (meta_age - 29)
+        age_woba_delta = max(-0.015, min(0.015, age_woba_delta))
+
         sav = savant["bat_xwoba"].get(pid)
         if sav and sav["pa"] > 0:
-            blended_raw = 0.60 * sav["xwoba"] + 0.40 * sav["woba"]
+            blended_raw = sav.get("marcel_woba", 0.65 * sav["xwoba"] + 0.35 * sav["woba"])
             blended_raw = max(0.150, min(0.550, blended_raw))
             pa = sav["pa"]
-            base_woba = (pa * blended_raw + 150.0 * LG_WOBA) / (pa + 150.0)
+            base_woba = (pa * blended_raw + 200.0 * LG_WOBA) / (pa + 200.0) + age_woba_delta
         else:
-            base_woba = (denom_pa * raw_woba + 150.0 * LG_WOBA) / (denom_pa + 150.0)
+            # Rookies with 0 MLB Statcast PAs regress toward rookie-level prior (~0.300 wOBA)
+            rookie_prior = 0.300
+            base_woba = (denom_pa * raw_woba + 200.0 * rookie_prior) / (denom_pa + 200.0)
 
         runner_runs = savant["baserunning"].get(pid, 0.0)
         eff_pa = max(denom_pa, sav["pa"] if sav else 0.0)
@@ -177,6 +183,7 @@ def estimate_pitcher_run_rate(
     savant: dict,
     fg_proj: dict,
     prior_ip: float = 60.0,
+    age: int | None = None,
 ) -> float:
     if pid in fg_proj["pit"]:
         return fg_proj["pit"][pid]["siera"]
@@ -184,10 +191,15 @@ def estimate_pitcher_run_rate(
     reg_fip, ip = calc_regressed_fip(pitch_stats, prior_ip=prior_ip)
     sav = savant["pit_xera"].get(pid)
     if sav and sav["pa"] > 0:
-        sav_ip_equiv = sav["pa"] / 4.25
+        sav_ip_equiv = sav.get("eff_ip", sav["pa"] / 4.25)
         clamped_xera = max(1.50, min(7.50, sav["xera"]))
-        reg_xera = (sav_ip_equiv * clamped_xera + prior_ip * LG_ERA_FIP) / (sav_ip_equiv + prior_ip)
-        return 0.50 * reg_xera + 0.50 * reg_fip
+        marcel_prior = max(prior_ip, 80.0 if prior_ip >= 50.0 else 35.0)
+        reg_xera = (sav_ip_equiv * clamped_xera + marcel_prior * LG_ERA_FIP) / (sav_ip_equiv + marcel_prior)
+        if age is not None:
+            age_delta = -0.035 * (27 - age) if age < 27 else 0.035 * (age - 27)
+            reg_xera += max(-0.18, min(0.35, age_delta))
+        # Blend 65% multi-year Marcel xERA + 35% current-season regressed FIP (or 100% Marcel on Opening Day)
+        return (0.65 * reg_xera + 0.35 * reg_fip) if ip > 0 else reg_xera
     return reg_fip
 
 
@@ -508,7 +520,8 @@ def run_date(
                     sp_stats = {}
 
                 is_opener = is_opener_pitcher(sp_stats)
-                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0)
+                sp_age = people_meta.get(sp_id, {}).get('currentAge')
+                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0, age=sp_age)
                 sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj, season=season, before_date=target_date)
 
             manual_bulk = bulk_overrides.get(t_abbr)

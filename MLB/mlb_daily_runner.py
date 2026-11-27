@@ -163,7 +163,8 @@ def _model_games(
                     sp_stats = {}
 
                 is_opener = is_opener_pitcher(sp_stats)
-                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0)
+                sp_age = people_meta.get(sp_id, {}).get('currentAge')
+                sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0, age=sp_age)
                 sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj, season=season, before_date=target_date)
 
             bulk = None
