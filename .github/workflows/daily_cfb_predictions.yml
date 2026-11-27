@@ -58,8 +58,6 @@ jobs:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
         run: |
           ARGS="--no-sheets"
-            ARGS=""
-          fi
           if [ -n "${{ github.event.inputs.start_date }}" ]; then
             ARGS="$ARGS --start-date ${{ github.event.inputs.start_date }}"
           fi
