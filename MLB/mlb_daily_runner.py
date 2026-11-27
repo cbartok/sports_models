@@ -164,7 +164,7 @@ def _model_games(
 
                 is_opener = is_opener_pitcher(sp_stats)
                 sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0)
-                sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj)
+                sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj, season=season, before_date=target_date)
 
             bulk = None
             if is_opener:

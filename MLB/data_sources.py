@@ -7,6 +7,7 @@ Sources:
 """
 
 import io
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
@@ -28,7 +29,7 @@ SESSION.mount(
 def _fetch_csv_cached(url: str, cache_name: str) -> pd.DataFrame:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = CACHE_DIR / cache_name
-    if path.exists():
+    if path.exists() and (time.time() - path.stat().st_mtime) < 12 * 3600:
         return pd.read_csv(path)
     resp = SESSION.get(url, timeout=20)
     resp.raise_for_status()
@@ -46,11 +47,23 @@ def load_savant_data(season: int) -> dict[str, dict]:
         "framing": f"https://baseballsavant.mlb.com/leaderboard/catcher-framing?year={season}&csv=true",
     }
 
-    bat_df = _fetch_csv_cached(urls["bat_x"], f"savant_bat_x_{season}.csv")
-    pit_df = _fetch_csv_cached(urls["pit_x"], f"savant_pit_x_{season}.csv")
-    bsr_df = _fetch_csv_cached(urls["bsr"], f"savant_bsr_{season}.csv")
-    oaa_df = _fetch_csv_cached(urls["oaa"], f"savant_oaa_{season}.csv")
-    frm_df = _fetch_csv_cached(urls["framing"], f"savant_framing_{season}.csv")
+    def _load_or_prev(key, name):
+        try:
+            df = _fetch_csv_cached(urls[key], f"savant_{name}_{season}.csv")
+            if len(df) >= 50:
+                return df
+        except Exception:
+            pass
+        prev_url = urls[key].replace(f"year={season}", f"year={season - 1}").replace(
+            f"startYear={season}&endYear={season}", f"startYear={season - 1}&endYear={season - 1}"
+        )
+        return _fetch_csv_cached(prev_url, f"savant_{name}_{season - 1}.csv")
+
+    bat_df = _load_or_prev("bat_x", "bat_x")
+    pit_df = _load_or_prev("pit_x", "pit_x")
+    bsr_df = _load_or_prev("bsr", "bsr")
+    oaa_df = _load_or_prev("oaa", "oaa")
+    frm_df = _load_or_prev("framing", "framing")
 
     bat_xwoba = {}
     for _, r in bat_df.iterrows():
@@ -241,3 +254,29 @@ def get_projected_lineup_for_team(
                 return order, players
 
     return fallback_lineup if fallback_lineup is not None else ([], {})
+
+
+def get_starter_game_log_ip(pid: int, season: int, before_date: str | None = None) -> tuple[float, int]:
+    """Fetch exact innings pitched and count of starts (gamesStarted == 1) from MLB gameLog."""
+    try:
+        url = f"{BASE_URL}/people/{pid}/stats?stats=gameLog&group=pitching&season={season}"
+        data = SESSION.get(url, timeout=12).json()
+        splits = data.get("stats", [{}])[0].get("splits", [])
+    except Exception:
+        return 0.0, 0
+
+    total_ip = 0.0
+    starts = 0
+    for sp in splits:
+        if before_date and sp.get("date", "") >= before_date:
+            continue
+        st = sp.get("stat", {})
+        if st.get("gamesStarted") == 1:
+            ip_str = str(st.get("inningsPitched", "0"))
+            if "." in ip_str:
+                w, f = ip_str.split(".")
+                total_ip += int(w) + int(f) / 3.0
+            else:
+                total_ip += float(ip_str)
+            starts += 1
+    return total_ip, starts

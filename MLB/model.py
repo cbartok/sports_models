@@ -12,6 +12,7 @@ from data_sources import (
     fetch_people_platoon_and_meta,
     get_all_recent_pitch_loads,
     get_projected_lineup_for_team,
+    get_starter_game_log_ip,
     load_fangraphs_projections,
     load_savant_data,
 )
@@ -66,6 +67,10 @@ PARK_FACTORS = {
     "Oracle Park": 0.94,
     "Petco Park": 0.95,
     "T-Mobile Park": 0.92,
+    "Sutter Health Park": 1.05,
+    "George M. Steinbrenner Field": 1.02,
+    "Tropicana Field": 0.97,
+    "American Family Field": 1.00,
 }
 
 
@@ -186,26 +191,35 @@ def estimate_pitcher_run_rate(
     return reg_fip
 
 
-def is_opener_pitcher(pitch_stats: dict) -> bool:
+def is_opener_pitcher(
+    pitch_stats: dict,
+    exact_start_ip: float | None = None,
+    exact_gs: int | None = None,
+) -> bool:
     if not pitch_stats:
         return False
     gp = pitch_stats.get("gamesPlayed", 0)
-    gs = pitch_stats.get("gamesStarted", 0)
+    gs = exact_gs if (exact_gs is not None and exact_gs > 0) else pitch_stats.get("gamesStarted", 0)
     ip = parse_ip(pitch_stats.get("inningsPitched", "0"))
-    if gp >= 10 and gs <= gp * 0.25:
+    if exact_start_ip is not None and exact_gs and exact_gs >= 3:
+        return (exact_start_ip / exact_gs) < 3.0
+    if gp >= 10 and gs <= gp * 0.25 and (ip / max(1, gp)) < 2.2:
         return True
     if gs >= 4 and ip > 0:
         relief_apps = max(0, gp - gs)
-        est_start_ip = max(0.0, ip - 1.25 * relief_apps)
+        est_start_ip = max(0.0, min(ip, ip - 1.25 * relief_apps))
         if (est_start_ip / gs) < 3.0:
             return True
     return False
 
 
-def estimate_sp_expected_innings(pid: int, pitch_stats: dict, fg_proj: dict) -> float:
-    if is_opener_pitcher(pitch_stats):
-        return 1.67
-
+def estimate_sp_expected_innings(
+    pid: int,
+    pitch_stats: dict,
+    fg_proj: dict,
+    season: int | None = None,
+    before_date: str | None = None,
+) -> float:
     prior_ip_per_gs = 5.30
     prior_gs = 5.0
 
@@ -218,11 +232,24 @@ def estimate_sp_expected_innings(pid: int, pitch_stats: dict, fg_proj: dict) -> 
     gp = pitch_stats.get("gamesPlayed", 0)
     gs = pitch_stats.get("gamesStarted", 0)
     ip = parse_ip(pitch_stats.get("inningsPitched", "0"))
+
+    # For swingmen / converted relievers (gp > gs), pull exact starter IP from MLB gameLog
+    exact_start_ip, exact_gs = None, None
+    if gp > gs and gs > 0 and season is not None:
+        exact_start_ip, exact_gs = get_starter_game_log_ip(pid, season, before_date=before_date)
+
+    if is_opener_pitcher(pitch_stats, exact_start_ip=exact_start_ip, exact_gs=exact_gs):
+        return 1.67
+
+    if exact_gs and exact_gs > 0 and exact_start_ip is not None:
+        reg_ip_gs = (exact_start_ip + prior_gs * prior_ip_per_gs) / (exact_gs + prior_gs)
+        return max(3.0, min(6.6, reg_ip_gs))
+
     if gs <= 0 or ip <= 0:
         return prior_ip_per_gs
 
     relief_apps = max(0, gp - gs)
-    est_start_ip = max(gs * 2.5, ip - 1.25 * relief_apps)
+    est_start_ip = min(gs * 6.5, max(gs * 2.5, ip - 1.25 * relief_apps))
     reg_ip_gs = (est_start_ip + prior_gs * prior_ip_per_gs) / (gs + prior_gs)
     return max(3.0, min(6.6, reg_ip_gs))
 
@@ -482,7 +509,7 @@ def run_date(
 
                 is_opener = is_opener_pitcher(sp_stats)
                 sp_rate = estimate_pitcher_run_rate(sp_id, sp_stats, savant, fg_proj, prior_ip=60.0)
-                sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj)
+                sp_ip = estimate_sp_expected_innings(sp_id, sp_stats, fg_proj, season=season, before_date=target_date)
 
             manual_bulk = bulk_overrides.get(t_abbr)
             bulk = None
