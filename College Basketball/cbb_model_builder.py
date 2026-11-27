@@ -19,6 +19,18 @@ import cbb_data_layer as cdl
 # Must stay at module level so pickled models load cleanly in cbb_model_predictor.py / GUI
 EnsembleModel = namedtuple("EnsembleModel", ["weights", "model_list"])
 
+EARLY_FEATURE_COLUMNS = [
+    "neutral",
+    "away_short_rest",
+    "away_long_rest",
+    "home_short_rest",
+    "home_long_rest",
+    "team_rankings_rating",
+    "strength_of_schedule",
+    "home_ken_pom",
+    "away_ken_pom",
+]
+
 FEATURE_COLUMNS = [
     "neutral",
     "away_short_rest",
@@ -135,12 +147,14 @@ class CbbModelBuilder:
     def __init__(
         self,
         data_path="historical_cbb_data.csv",
+        feature_columns=None,
         val_year=None,
         test_year=None,
         trunc_cap=20.0,
         random_state=42,
     ):
         self.data_path = data_path
+        self.feature_columns = feature_columns or FEATURE_COLUMNS
         self.trunc_cap = trunc_cap
         self.random_state = random_state
         self.scorer = make_scorer(
@@ -161,14 +175,14 @@ class CbbModelBuilder:
         self.val_df = df[df["year"] == self.val_year].reset_index(drop=True)
         self.test_df = df[df["year"] == self.test_year].reset_index(drop=True)
 
-        self.X_train = self.train_df[FEATURE_COLUMNS].to_numpy()
+        self.X_train = self.train_df[self.feature_columns].to_numpy()
         self.y_train = self.train_df["result"].to_numpy()
         self.groups_train = self.train_df["year"].to_numpy()
 
-        self.X_val = self.val_df[FEATURE_COLUMNS].to_numpy()
+        self.X_val = self.val_df[self.feature_columns].to_numpy()
         self.y_val = self.val_df["result"].to_numpy()
 
-        self.X_test = self.test_df[FEATURE_COLUMNS].to_numpy()
+        self.X_test = self.test_df[self.feature_columns].to_numpy()
         self.y_test = self.test_df["result"].to_numpy()
         self.close_test = self.test_df["close"].to_numpy() if "close" in self.test_df else None
 
@@ -357,7 +371,7 @@ class CbbModelBuilder:
 
         model_list = []
         if refit_all_data:
-            X_all = self.df[FEATURE_COLUMNS].to_numpy()
+            X_all = self.df[self.feature_columns].to_numpy()
             y_all = self.df["result"].to_numpy()
             print(f"\nRefitting all 4 tuned models on full dataset ({len(self.df)} games)...")
             for m in tuned:
@@ -380,5 +394,12 @@ def build_cbb_clustering_model():
 
 
 if __name__ == "__main__":
-    builder = CbbModelBuilder(data_path="historical_cbb_data.csv")
-    builder.build_ensemble()
+    print("=== Building Full CBB Model (17 features) ===")
+    CbbModelBuilder(
+        data_path="historical_cbb_data.csv", feature_columns=FEATURE_COLUMNS
+    ).build_ensemble(save_path="cbb_model.pickle")
+
+    print("\n=== Building Early-Season CBB Model (9 features) ===")
+    CbbModelBuilder(
+        data_path="historical_cbb_data.csv", feature_columns=EARLY_FEATURE_COLUMNS
+    ).build_ensemble(save_path="cbb_early_model.pickle")

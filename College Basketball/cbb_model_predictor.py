@@ -22,7 +22,7 @@ def create_ensemble_fit_table(model_list, features):
     return forecast_fit_table
 
 
-def predict_games(target_date=None, model_path="cbb_model.pickle", output_csv="cbb_predictions.csv"):
+def predict_games(target_date=None, model_path=None, output_csv="cbb_predictions.csv", force_full=None):
     """Fetch games + features + current spreads for target_date (Pacific) and run the BMA ensemble."""
     if target_date is None:
         now_pt = datetime.now(PACIFIC_TZ)
@@ -32,10 +32,19 @@ def predict_games(target_date=None, model_path="cbb_model.pickle", output_csv="c
 
     date_label = f"{todays_date.strftime('%b')} {todays_date.day}"
 
-    cbb_model = cmb.import_cbb_model(file_name=model_path)
+    if force_full is not None:
+        use_full = force_full
+    else:
+        use_full = not (todays_date.month == 11 and todays_date.day <= 25)
+
+    resolved_model = model_path or ("cbb_model.pickle" if use_full else "cbb_early_model.pickle")
+    feature_cols = cmb.FEATURE_COLUMNS if use_full else cmb.EARLY_FEATURE_COLUMNS
+    print(f"Using {'FULL' if use_full else 'EARLY-SEASON'} CBB model ({resolved_model}) for {date_label}")
+
+    cbb_model = cmb.import_cbb_model(file_name=resolved_model)
     cbb_data = cdl.CbbDataLayer()
 
-    data = cbb_data.create_dataframe(todays_date, todays_date)
+    data = cbb_data.create_dataframe(todays_date, todays_date, early_season=not use_full)
     if data.empty:
         print(f"No upcoming D1 games found for {date_label}.")
         empty_df = pd.DataFrame(
@@ -46,7 +55,7 @@ def predict_games(target_date=None, model_path="cbb_model.pickle", output_csv="c
 
     model_data = data.copy()
     model_data["neutral"] = np.where(model_data["neutral"] == 1, 1, 0)
-    game_features = model_data[cmb.FEATURE_COLUMNS].to_numpy()
+    game_features = model_data[feature_cols].to_numpy()
 
     ensemble_model_predictions = create_ensemble_fit_table(
         cbb_model.model_list, game_features
@@ -167,7 +176,7 @@ def export_github_pages_json(results_df, target_date=None, data_dir="../docs/dat
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run daily CBB spread predictions.")
     parser.add_argument("--date", default=None, help="Target date (YYYY-MM-DD). Defaults to today (Pacific).")
-    parser.add_argument("--model", default="cbb_model.pickle", help="Path to saved EnsembleModel pickle.")
+    parser.add_argument("--model", default=None, help="Optional path to saved EnsembleModel pickle (auto-selects early vs full by date if omitted).")
     parser.add_argument("--output", default="cbb_predictions.csv", help="Output CSV path.")
     parser.add_argument("--json-dir", default="../docs/data", help="Directory for GitHub Pages JSON output.")
     parser.add_argument("--sheet-id", default=None, help="Google Sheet ID (or set GOOGLE_SHEET_ID env var).")

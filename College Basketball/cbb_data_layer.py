@@ -1028,7 +1028,7 @@ class CbbDataLayer:
         df[col_name] = vals / 100.0 if is_pct else vals
         return df
 
-    def pull_team_rankings_data(self, year=None):
+    def pull_team_rankings_data(self, year=None, early_season=False):
         specs = [
             ("ranking/predictive-by-other", "team_rankings_rating", False, True),
             ("ranking/schedule-strength-by-other", "strength_of_schedule", False, True),
@@ -1041,6 +1041,8 @@ class CbbDataLayer:
             ("stat/free-throw-rate", "ft_rate", True, False),
             ("stat/opponent-free-throw-rate", "opp_ft_rate", True, False),
         ]
+        if early_season:
+            specs = specs[:2]
 
         results = {}
         with ThreadPoolExecutor(max_workers=len(specs)) as pool:
@@ -1089,34 +1091,35 @@ class CbbDataLayer:
         updated["away_ken_pom"] = (
             -data["away_ken_pom_offense"] - data["home_ken_pom_defense"]
         )
-        updated["home_efficiency"] = (
-            data["home_offensive_efficiency"] + data["away_defensive_efficiency"]
-        )
-        updated["away_efficiency"] = (
-            -data["away_offensive_efficiency"] - data["home_defensive_efficiency"]
-        )
-        updated["home_rebounding"] = (
-            data["home_def_rebounding_percentage"]
-            - data["away_off_rebounding_percentage"]
-        )
-        updated["away_rebounding"] = (
-            -data["away_def_rebounding_percentage"]
-            + data["home_off_rebounding_percentage"]
-        )
-        updated["home_turnover_rate"] = (
-            -data["home_to_percentage"] - data["away_opp_to_percentage"]
-        )
-        updated["away_turnover_rate"] = (
-            data["away_to_percentage"] + data["home_opp_to_percentage"]
-        )
-        updated["home_ft_rate"] = data["home_ft_rate"] + data["away_opp_ft_rate"]
-        updated["away_ft_rate"] = -data["away_ft_rate"] - data["home_opp_ft_rate"]
+        if "home_offensive_efficiency" in data.columns:
+            updated["home_efficiency"] = (
+                data["home_offensive_efficiency"] + data["away_defensive_efficiency"]
+            )
+            updated["away_efficiency"] = (
+                -data["away_offensive_efficiency"] - data["home_defensive_efficiency"]
+            )
+            updated["home_rebounding"] = (
+                data["home_def_rebounding_percentage"]
+                - data["away_off_rebounding_percentage"]
+            )
+            updated["away_rebounding"] = (
+                -data["away_def_rebounding_percentage"]
+                + data["home_off_rebounding_percentage"]
+            )
+            updated["home_turnover_rate"] = (
+                -data["home_to_percentage"] - data["away_opp_to_percentage"]
+            )
+            updated["away_turnover_rate"] = (
+                data["away_to_percentage"] + data["home_opp_to_percentage"]
+            )
+            updated["home_ft_rate"] = data["home_ft_rate"] + data["away_opp_ft_rate"]
+            updated["away_ft_rate"] = -data["away_ft_rate"] - data["home_opp_ft_rate"]
 
         return updated
 
-    def _merge_team_features(self, games_df, year=None):
+    def _merge_team_features(self, games_df, year=None, early_season=False):
         ken_pom = self.pull_ken_pom_data(year)
-        tr = self.pull_team_rankings_data(year)
+        tr = self.pull_team_rankings_data(year, early_season=early_season)
 
         away_kp = ken_pom.add_prefix("away_")
         home_kp = ken_pom.add_prefix("home_")
@@ -1151,12 +1154,12 @@ class CbbDataLayer:
         data.dropna(inplace=True)
         return self.create_opponent_adjusted_stats(data, 7)
 
-    def create_dataframe(self, start_date, end_date):
+    def create_dataframe(self, start_date, end_date, early_season=False):
         data = self.pull_schedule(start_date, end_date)
         if data.empty:
             return data
 
-        data = self._merge_team_features(data, year=None)
+        data = self._merge_team_features(data, year=None, early_season=early_season)
         missing = data.loc[data.isna().any(axis=1), ["home_name", "away_name"]]
         if not missing.empty:
             print("Dropped due to missing team stats:\n", missing)
