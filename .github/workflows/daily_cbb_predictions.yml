@@ -1,9 +1,9 @@
-name: Daily CBB Predictions (7 AM Pacific)
+name: Daily CBB Predictions
 
 on:
   schedule:
-    - cron: "13 14 * 1-4,11-12 *"
-    - cron: "13 15 * 1-4,11-12 *"
+    # 5:13 AM PST / 6:13 AM PDT daily during CBB season (Nov-Apr)
+    - cron: "13 13 * 1-4,11-12 *"
   workflow_dispatch:
     inputs:
       target_date:
@@ -16,26 +16,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check Pacific DST (immune to GitHub cron delays)
-        id: tz_check
-        run: |
-          TZ_ABBR=$(TZ="America/Los_Angeles" date +%Z)
-          SCHED="${{ github.event.schedule }}"
-          echo "Pacific TZ: $TZ_ABBR | Schedule: $SCHED"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
-             { [ "$TZ_ABBR" = "PST" ] && [ "$SCHED" = "13 15 * 1-4,11-12 *" ]; } || \
-             { [ "$TZ_ABBR" = "PDT" ] && [ "$SCHED" = "13 14 * 1-4,11-12 *" ]; }; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout repository
-        if: steps.tz_check.outputs.should_run == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python 3.12
-        if: steps.tz_check.outputs.should_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -43,11 +27,9 @@ jobs:
           cache-dependency-path: "College Basketball/requirements.txt"
 
       - name: Install dependencies
-        if: steps.tz_check.outputs.should_run == 'true'
         run: pip install -r "College Basketball/requirements.txt"
 
-      - name: Run daily CBB predictions and upload to Google Sheets
-        if: steps.tz_check.outputs.should_run == 'true'
+      - name: Run daily CBB predictions
         working-directory: "College Basketball"
         env:
           CBBD_API_KEY: ${{ secrets.CBBD_API_KEY }}
@@ -60,16 +42,7 @@ jobs:
             python cbb_model_predictor.py --no-sheets
           fi
 
-      - name: Upload predictions CSV artifact
-        if: steps.tz_check.outputs.should_run == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: cbb-predictions-${{ github.run_id }}
-          path: "College Basketball/cbb_predictions.csv"
-          retention-days: 14
-
       - name: Publish updated predictions to GitHub Pages
-        if: steps.tz_check.outputs.should_run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -79,5 +52,5 @@ jobs:
             git pull --rebase origin master
             git push
           else
-            echo "No changes in docs/data/ to commit."
+            echo "No changes in docs/data/latest.json to commit."
           fi
