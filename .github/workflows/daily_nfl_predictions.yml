@@ -70,10 +70,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin master
-          git add docs/data/nfl/
+          git add docs/data/nfl/latest.json
           if ! git diff --cached --quiet; then
             git commit -m "Update daily NFL predictions ($(TZ='America/Los_Angeles' date +%Y-%m-%d))"
+            git pull --rebase origin master
             git push
           else
             echo "No changes in docs/data/nfl/ to commit."
